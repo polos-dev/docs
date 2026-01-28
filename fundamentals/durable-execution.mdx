@@ -1,0 +1,172 @@
+---
+title: "Durable execution"
+icon: "shield-check"
+---
+
+Durable execution is the foundation of Polos. It ensures your workflows survive failures, server restarts, and network issues by automatically tracking state and replaying from the last completed step.
+
+# How it works
+
+When you write a workflow in Polos, the framework automatically persists your execution state to Postgres database. Here's what happens behind the scenes:
+
+### 1. Workflow starts
+
+```python
+@workflow
+async def process_order(ctx: WorkflowContext, input: OrderInput):
+    order = await ctx.step.run("fetch_order", fetch_order, input.order_id)
+    await ctx.step.run("charge_payment", charge_payment, order)
+    await ctx.step.run("send_confirmation", send_confirmation, order)
+    return {"status": "completed"}
+```
+
+When you invoke `process_order`, before your code runs:
+
+- Polos generates a unique execution ID
+- Stores the execution status as `PENDING` in the database
+- Persists the input payload
+
+### 2. Steps execute and persist
+
+Each time `ctx.step.run()` executes:
+
+- The step function runs
+- The output is persisted to the database
+- The output is returned to the workflow
+
+After three steps complete, the database contains:
+
+- `fetch_order` → output stored
+- `charge_payment` → output stored
+- `send_confirmation` → output stored
+
+### 3. Workflow completes
+
+Once all steps finish, Polos updates the workflow status to `SUCCESS`.
+
+# Recovery after failure
+
+What happens if your worker crashes at step 2?
+
+When the orchestrator detects the failure, it automatically retries the workflow:
+
+1. Retrieves the original inputs from the database
+2. Starts the workflow function from the beginning
+3. For each step:
+   - Checks if that step already executed
+   - If yes → returns the cached output (no re-execution)
+   - If no → executes the step and persists the output
+
+```python
+@workflow
+async def process_order(ctx: WorkflowContext, input: OrderInput):
+    # ✅ Step 1: Already executed, returns cached result
+    order = await ctx.step.run("fetch_order", fetch_order, input.order_id)
+    
+    # ✅ Step 2: Already executed, returns cached result
+    await ctx.step.run("charge_payment", charge_payment, order)
+    
+    # ▶️ Step 3: Executes for the first time
+    await ctx.step.run("send_confirmation", send_confirmation, order)
+    
+    return {"status": "completed"}
+```
+
+The workflow resumes from step 3 - no wasted API calls, no duplicate charges, no lost progress.
+
+# Why determinism matters
+
+For this model to work, workflows must be **deterministic**: given the same inputs, they should invoke the same steps with the same inputs in the same order.
+
+This is why non-deterministic operations must be in steps - otherwise, replaying a workflow could take a different execution path.
+
+### The problem with non-deterministic code
+
+```python
+@workflow
+async def bad_example(ctx: WorkflowContext, input: Input):
+    # ❌ BAD: Random number determines execution path
+    if random.random() > 0.5:
+        result = await ctx.step.run("expensive_analysis", run_analysis, input.data)
+    else:
+        result = await ctx.step.run("quick_check", run_check, input.data)
+    
+    await ctx.step.run("send_result", send_email, result)
+```
+
+**What goes wrong:**
+
+**Original execution:**
+1. `random.random()` returns `0.7` → takes expensive analysis path
+2. Step `"expensive_analysis"` executes and output is cached
+3. Worker crashes before `send_result` executes
+
+**On replay:**
+1. `random.random()` returns `0.3` → takes quick check path
+2. Tries to execute step `"quick_check"`
+3. **But step `"expensive_analysis"` already exists in the database!**
+4. Polos can't reconcile the execution history → **replay fails or produces wrong results**
+
+### The solution: Put non-deterministic operations in steps
+
+```python
+@workflow
+async def good_example(ctx: WorkflowContext, input: Input):
+    # ✅ GOOD: Random number generated in a step
+    should_analyze = await ctx.step.run("decide", lambda: random.random() > 0.5)
+    
+    if should_analyze:
+        result = await ctx.step.run("expensive_analysis", run_analysis, input.data)
+    else:
+        result = await ctx.step.run("quick_check", run_check, input.data)
+    
+    await ctx.step.run("send_result", send_email, result)
+```
+
+**What happens on replay:**
+
+**Original execution:**
+1. Step `"decide"` returns `True` (cached: `0.7 > 0.5`)
+2. Step `"expensive_analysis"` executes
+
+**On replay:**
+1. Step `"decide"` returns **cached `True`** (not re-executed)
+2. Takes same path → `"expensive_analysis"` found in cache
+3. Workflow resumes deterministically from `"send_result"`
+
+## Built-in helpers for common cases
+
+Polos provides helpers for common non-deterministic operations:
+
+```python
+@workflow
+async def order_workflow(ctx: WorkflowContext, input: Input):
+    # Built-in helpers (automatically durable)
+    timestamp = await ctx.step.now("get_time")
+    order_id = await ctx.step.uuid("gen_id")
+    random_val = await ctx.step.random("get_random")
+    
+    await ctx.step.run("create_order", create_order, order_id, timestamp)
+```
+
+These are equivalent to wrapping `time.time()`, `uuid.uuid4()`, and `random.random()` in steps, but more convenient.
+
+## Step output requirements
+
+Step outputs must be **JSON serializable** so they can be persisted to the database.
+
+We recommend using Pydantic models for step outputs.
+
+## Key takeaways
+
+- **Durable execution = automatic state tracking** - Every step's input and output is persisted
+- **Steps are cached on replay - no re-execution, no wasted API calls** — Completed steps return cached results
+- **Workflows must be deterministic to replay correctly** - Same inputs must produce same execution path
+- **Non-deterministic operations must be in steps** - Time, UUIDs, random, API calls
+- **Use `ctx.step.now()`, `ctx.step.uuid()`, `ctx.step.random()` for common cases** - These helpers are cached on replay
+- **Step outputs must be JSON serializable** - Use Pydantic models for complex types
+
+## Learn more
+
+- **[Workflows](/workflows/overview)** – Learn how to write durable workflows
+- **[Examples](/guides/cookbook-examples)** – See real-world examples

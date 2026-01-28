@@ -1,97 +1,68 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to Polos"
+description: "Durable execution platform for AI agents"
 ---
 
-## Setting up
+# Introduction
 
-Get your documentation site up and running in minutes.
+Polos is a **durable execution platform** for AI agents. It provides the stateful infrastructure required to run long-running, autonomous agents reliably at scale.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Write your logic in plain Python (or TypeScript - coming soon). Polos ensures it survives crashes, handles failures, and scales automatically.
 
-## Make it yours
+## Why Polos?
 
-Design a docs site that looks great and empowers your users.
+Most AI agents work in demo but break in production. Agents are long-running distributed systems - yet we run them on infrastructure built for stateless APIs.
 
-<Columns cols={2}>
+Polos gives you everything you need to build production-grade AI agents out of the box:
+
+- **Durable execution**: Your agent survives server restarts and resumes exactly where it stopped, call stack and local variables intact. If a 20-step workflow crashes at step 18, Polos resumes from step 18 - no re-running the first 17 LLM calls, no wasted tokens. No manual checkpointing or retry logic needed.
+
+- **Workflows**: Write workflows as plain async code. Call one function from another, handle errors with try/catch, use loops and conditionals - just regular code. Polos automatically makes it durable so your code survives crashes and resumes mid-execution.
+
+- **Global concurrency control**: Control how many agents run simultaneously using queues with configurable concurrency limits. Prevent one workflow from exhausting your OpenAI quota or overloading external APIs. Only active executions count toward limits - queued runs wait their turn without consuming resources.
+
+- **Human-in-the-loop**: Pause an agent mid-execution to await user approval, then resume hours or days later with full state intact. In serverless environments, paused agents consume zero compute - you only pay when they're actively running. Perfect for approval workflows, financial transactions, or any operation requiring human oversight.
+
+- **Persistent memory**: Give your agents persistent context that survives across steps, servers, and execution lifetimes. Agents maintain conversation history, and  context automatically.
+
+- **Agent coordination**: When building multi-agent systems, seamlessly hand off context and reasoning history between specialized agents. Shared working memory prevents state drift and enables true agent collaboration.
+
+- **Decision-level observability**: Trace the reasoning and intent behind every tool call, not just raw logs. Built-in observability shows you why your agent chose Tool B over Tool A, making debugging deterministic failures in stochastic systems actually possible.
+
+## What can you build?
+
+If your agent runs for more than 30 seconds, it needs durable execution. Polos is designed for:
+
+- **Long-running workflows** – Research bots or coding assistants that operate over minutes or hours
+
+- **Human-in-the-loop** – Agents that pause execution for human approval and resume hours later with full state
+
+- **Multi-agent systems** – Multi-agent systems that share working memory to coordinate complex tasks
+
+- **Mission-critical automation** – Workflows that perform side effects (Stripe charges, DB writes) and require strict "exactly-once" semantics
+
+## Next Steps
+
+<CardGroup cols={3}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
   >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Deploy your first durable agent in 5 minutes
   </Card>
   <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
+    title="Core Concepts"
+    icon="lightbulb"
+    href="/fundamentals/overview"
   >
-    Add sample code to demonstrate how to use your product.
+    Learn how Polos handles state and durability
   </Card>
   <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
+    title="Examples"
+    icon="book-open"
+    href="/guides/cookbook-examples"
   >
-    Display images and other media.
+    See how to build HITL agents and multi-agent systems
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+</CardGroup>

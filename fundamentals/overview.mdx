@@ -1,0 +1,33 @@
+---
+title: "Overview"
+icon: "lightbulb"
+---
+
+Polos is a **durable execution platform** for AI agents. It ensures your agent workflows survive failures, scale automatically, and maintain state across long-running operations.
+
+# Architecture
+
+Polos has two main components:
+
+**Orchestrator** – Manages workflow execution, handles scheduling, concurrency control, queueing, and automatic retries. The orchestrator tracks workflow state and pushes execution requests to available workers.
+
+**Workers** – Execute your workflow code. Each worker runs a FastAPI server that receives execution requests from the orchestrator, runs your Python code logic, and reports results back.
+
+<img src="/images/system-diagram.png" alt="Polos system diagram" />
+
+# How it works
+
+**1. Workflow invocation**  
+When an agent/workflow is started, the orchestrator receives the request and queues it for execution.
+
+**2. Execution**  
+The orchestrator pushes the workflow execution to an available worker via HTTP. The worker executes your code step-by-step, persisting state after each step.
+
+**3. Concurrency control**  
+If too many workflow instances are running, the orchestrator queues new runs until execution slots open up. You can configure concurrency limits per queue.
+
+**4. Failure handling**  
+If a worker crashes or a step fails, the orchestrator automatically retries the workflow. It resumes from the last completed step - no lost progress.
+
+**5. Workflow composition**  
+When a workflow invokes child workflows, the orchestrator suspends the parent (preserving its state) and executes children. Once children complete, the parent resumes with their results.

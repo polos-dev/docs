@@ -1,0 +1,285 @@
+---
+title: "Tools"
+icon: "wrench"
+---
+
+Tools give agents the ability to take actions - calling APIs, querying databases, sending emails, or any other operation your agent needs to perform.
+
+## Defining tools
+
+Tools are defined using the `@tool` decorator. Each tool needs:
+
+- A description (guides the LLM on when to use it)
+- Pydantic models for input and output
+- An async function that performs the action
+
+```python
+from polos import tool, WorkflowContext
+from pydantic import BaseModel, Field
+
+class WeatherInput(BaseModel):
+    city: str = Field(description="City name")
+    unit: str = Field(default="celsius", description="Temperature unit")
+
+class WeatherOutput(BaseModel):
+    city: str
+    temperature: float
+    condition: str
+    humidity: int
+
+@tool(description="Get current weather for a city")
+async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutput:
+    # Call weather API
+    response = await weather_api.get(
+        city=input.city,
+        unit=input.unit
+    )
+    
+    return WeatherOutput(
+        city=input.city,
+        temperature=response.temp,
+        condition=response.conditions,
+        humidity=response.humidity
+    )
+```
+
+## Why Pydantic models?
+
+**Input models:**
+
+- Define the schema the LLM sees
+- Validate tool inputs automatically
+- Provide clear descriptions via `Field(description=...)`
+
+**Output models:**
+
+- Ensure type safety
+- Make outputs JSON-serializable for durability
+- Document what the tool returns
+
+## Using tools with agents
+
+Add tools to an agent's `tools` parameter:
+
+```python
+from polos import Agent
+
+weather_agent = Agent(
+    id="weather-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a weather assistant. Use tools to answer weather questions.",
+    tools=[get_weather]
+)
+
+response = await weather_agent.run("What's the weather in Tokyo?")
+```
+
+**What happens:**
+
+1. LLM analyzes the request
+2. LLM decides to call `get_weather` with `city="Tokyo"`
+3. Agent automatically executes the tool
+4. Agent feeds the tool output back to the LLM
+5. LLM generates a natural language response
+
+## Tools are workflows
+
+Under the hood, tools are workflows. This means:
+
+- **Tools are durable** - If a tool fails mid-execution, it resumes from the last completed step
+- **Tool results are cached** - On agent replay, completed tools return cached results (no re-execution)
+- **Tools can use workflow features** - Call other workflows, wait for events, use steps
+
+```python
+@tool(description="Process order and send confirmation")
+async def process_order(ctx: WorkflowContext, input: OrderInput) -> OrderOutput:
+    # Tool can use workflow steps
+    order = await ctx.step.run("create_order", create_order, input)
+    
+    # Tool can call other workflows
+    payment = await ctx.step.invoke_and_wait(
+        "process_payment",
+        payment_workflow,
+        {"order_id": order.id}
+    )
+    
+    # Tool can wait
+    await ctx.step.wait_for("delay", seconds=5)
+    
+    return OrderOutput(order_id=order.id, status="completed")
+```
+
+## Error handling
+
+When tools encounter errors, the agent feeds the error back to the LLM so it can correct mistakes or try alternative approaches.
+
+```python
+class CalculatorInput(BaseModel):
+    expression: str
+
+class CalculatorOutput(BaseModel):
+    result: float
+    error: str | None = None
+
+@tool(description="Evaluate mathematical expressions")
+async def calculator(ctx: WorkflowContext, input: CalculatorInput) -> CalculatorOutput:
+    result = eval(input.expression)
+    return CalculatorOutput(result=result, error=None)
+```
+
+**Example flow:**
+
+```
+User: "What's 10 divided by zero?"
+
+LLM → calculator(expression="10 / 0")
+Tool → throws "ZeroDivisionError: division by zero"
+Agent → sends error back to the LLM
+LLM → "I apologize, but division by zero is undefined in mathematics..."
+```
+
+The LLM automatically:
+
+- Sees the error message
+- Understands what went wrong
+- Can retry with corrected inputs
+- Or explain the limitation to the user
+
+## Multiple tools
+
+Agents can use multiple tools in a single conversation:
+
+```python
+class SearchInput(BaseModel):
+    query: str
+
+class SearchOutput(BaseModel):
+    results: list[str]
+
+class EmailInput(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+class EmailOutput(BaseModel):
+    status: str
+
+@tool(description="Search the web")
+async def search_web(ctx: WorkflowContext, input: SearchInput) -> SearchOutput:
+    results = await search_api.query(input.query)
+    return SearchOutput(results=results[:5])
+
+@tool(description="Send an email")
+async def send_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
+    await email_service.send(
+        to=input.to,
+        subject=input.subject,
+        body=input.body
+    )
+    return EmailOutput(status="sent")
+
+assistant = Agent(
+    id="assistant",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt="You are a helpful assistant. Search for information and send emails when needed.",
+    tools=[search_web, send_email]
+)
+
+response = await assistant.run(
+    "Search for Python tutorials and email the top 3 results to alice@example.com"
+)
+```
+
+The agent will:
+
+1. Call `search_web("Python tutorials")`
+2. Process the results
+3. Call `send_email(to="alice@example.com", subject="...", body="...")`
+4. Return confirmation
+
+## Tool descriptions
+
+Write clear tool descriptions to help the LLM understand when to use each tool:
+
+```python
+# ❌ BAD: Vague description
+@tool(description="Does stuff with data")
+async def process_data(ctx, input):
+    ...
+
+# ✅ GOOD: Clear, specific description
+@tool(description="Analyze CSV data and return summary statistics including mean, median, and standard deviation")
+async def analyze_csv(ctx: WorkflowContext, input: AnalyzeInput) -> AnalyzeOutput:
+    ...
+
+# ✅ GOOD: Includes usage guidance
+@tool(description="Send an email. Use this when the user explicitly asks to send an email or notify someone.")
+async def send_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
+    ...
+```
+
+**Best practices:**
+
+- Describe what the tool does
+- Mention when it should be used
+- Include key parameters in the description
+- Use active voice ("Get weather data" not "This gets weather data")
+
+## Field descriptions
+
+Use Pydantic `Field` to document input parameters:
+
+```python
+from pydantic import BaseModel, Field
+
+class SearchInput(BaseModel):
+    query: str = Field(description="The search query string")
+    max_results: int = Field(
+        default=10,
+        description="Maximum number of results to return (1-100)"
+    )
+    filter_by_date: bool = Field(
+        default=False,
+        description="If true, only return results from the last 30 days"
+    )
+
+@tool(description="Search the web for information")
+async def search(ctx: WorkflowContext, input: SearchInput) -> SearchOutput:
+    ...
+```
+
+The LLM sees these descriptions and uses them to construct correct tool calls.
+
+## Tool durability in practice
+
+Because tools are workflows, they benefit from durability:
+
+```python
+@tool(description="Process large dataset")
+async def process_dataset(ctx: WorkflowContext, input: DatasetInput) -> DatasetOutput:
+    # Step 1: Download data (durable)
+    data = await ctx.step.run("download", download_data, input.url)
+    
+    # Step 2: Transform data (durable)
+    transformed = await ctx.step.run("transform", transform_data, data)
+    
+    # Step 3: Upload results (durable)
+    url = await ctx.step.run("upload", upload_results, transformed)
+    
+    return DatasetOutput(result_url=url)
+```
+
+If this tool crashes after downloading but before transforming:
+
+- On retry, `download` returns cached data (no re-download)
+- `transform` executes for the first time
+- Agent continues without losing progress
+
+## Key takeaways
+
+- **Tools are workflows** - They're durable and can use all workflow features
+- **Use Pydantic models for input and output**
+- **Errors are feedback** - Tools return errors to the LLM, which can correct and retry
+- **Write clear descriptions** - Help the LLM understand when and how to use tools

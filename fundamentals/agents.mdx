@@ -1,0 +1,289 @@
+---
+title: "Agents"
+icon: "robot"
+---
+
+Agents use LLMs to reason about tasks and autonomously decide which actions to take. In Polos, agents are **durable** - they survive failures and resume exactly where they stopped.
+
+```python
+import asyncio
+from polos import Agent, tool, WorkflowContext
+from pydantic import BaseModel
+
+class WeatherInput(BaseModel):
+    city: str
+
+@tool(description="Get weather for a city")
+async def get_weather(ctx: WorkflowContext, input: WeatherInput):
+    return await weather_api.get(input.city)
+
+weather_agent = Agent(
+    id="weather-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful weather assistant.",
+    tools=[get_weather]
+)
+
+async def main():
+    # Run the agent
+    response = await weather_agent.run("What's the weather in NYC?")
+    print(response.result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+That's it. Your agent automatically:
+
+- Calls tools when needed
+- Survives crashes and resumes mid-reasoning
+- Maintains conversation history
+- Prevents duplicate API calls
+
+## How agents work
+
+When you run an agent:
+
+1. **LLM reasons about the task** - The agent analyzes your request and decides what to do
+2. **Calls tools if needed** - If the agent needs information or wants to take action, it calls the appropriate tools
+3. **Iterates until complete** - The agent continues reasoning and calling tools until it has a final answer or hits a stop condition
+4. **Returns the result** - You get the final response
+
+Agents are durable. If your agent crashes mid-execution (say, after calling the weather API but before responding), Polos automatically resumes it from where it stopped. No duplicate API calls, saving you tokens and cost.
+
+Under the hood, agents are built on Polos [workflows](/fundamentals/workflows) with automatic state persistence. Learn more about [how durability works here](/fundamentals/durable-execution).
+
+## Running agents
+
+### Direct execution
+
+Use `agent.run()` for simple execution:
+
+```python
+response = await weather_agent.run(
+    "Compare the weather in NYC and London",
+    reasoning={"effort": "medium"}
+)
+
+print(response.result)
+```
+
+The agent:
+
+- Calls LLM with the user input
+- Executes tool calls suggested by the LLM - in this case, `get_weather` for NYC and `get_weather` for London
+- Calls LLM with the results (or errors) of the tool calls
+- Returns the final LLM response if no more tool calls are needed
+
+### Streaming responses
+
+Stream responses for real-time user experience:
+
+```python
+result = await weather_agent.stream("What's the weather in Tokyo?")
+
+# Stream text chunks as they arrive
+async for chunk in result.text_chunks:
+    print(chunk, end="", flush=True)
+```
+
+## Tools
+
+Tools give agents the ability to take actions. Define them with the `@tool` decorator:
+
+```python
+from polos import tool, WorkflowContext
+from pydantic import BaseModel
+from typing import List
+
+class SearchInput(BaseModel):
+    query: str
+
+class SearchOutput(BaseModel):
+    results: List[str]
+
+class EmailInput(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+class EmailOutput(BaseModel):
+    status: str
+
+@tool(description="Search the web")
+async def search_web(ctx: WorkflowContext, input: SearchInput) -> SearchOutput:
+    results = await search_api.query(input.query)
+    return SearchOutput(results=results[:5])
+
+@tool(description="Send an email")
+async def send_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
+    await email_service.send(
+        to=input.to,
+        subject=input.subject,
+        body=input.body
+    )
+    return EmailOutput(status="sent")
+
+research_agent = Agent(
+    id="research-agent",
+    provider="anthropic",
+    model="claude-sonnet-4",
+    system_prompt="You are a research assistant. Search for information and email summaries.",
+    tools=[search_web, send_email]
+)
+```
+
+The LLM sees each tool's description and function signature, then decides when to call them based on the user's request.
+
+Tools are durable (under the hood, they are workflows) - if an agent crashes after calling a tool, the tool result is cached. On resume, the agent doesn't re-execute the tool; it uses the cached result.
+
+## Structured outputs
+
+Instead of natural language, agents can return structured data:
+
+```python
+from pydantic import BaseModel, Field
+
+class PersonInfo(BaseModel):
+    name: str = Field(description="Full name")
+    age: int = Field(description="Age in years", ge=0, le=130)
+    email: str = Field(description="Email address")
+    location: str = Field(description="City")
+
+person_extractor = Agent(
+    id="person-extractor",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="Extract person information from text.",
+    output_schema=PersonInfo
+)
+
+async def main():
+    response = await person_extractor.run(
+        "Hi, I'm Alice, 28 years old, living in SF. Email: alice@example.com"
+    )
+
+    # response.result is a PersonInfo object
+    print(response.result.name)      # "Alice"
+    print(response.result.age)       # 28
+    print(response.result.location)  # "SF"
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Perfect for data extraction, form processing, or building structured APIs.
+
+## Stop conditions
+
+Control when an agent stops executing to prevent runaway costs or infinite loops:
+
+```python
+from polos import max_steps, max_tokens, MaxStepsConfig, MaxTokensConfig
+
+research_agent = Agent(
+    id="research-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="Research topics thoroughly.",
+    tools=[search_web, read_article],
+    stop_conditions=[
+        max_steps(MaxStepsConfig(limit=15)),        # Stop after 15 LLM calls
+        max_tokens(MaxTokensConfig(limit=50000)),   # Stop if tokens exceed 50k
+    ]
+)
+```
+
+Here, we are using **built-in stop conditions:**
+
+- `max_steps` - Limit reasoning iterations
+- `max_tokens` - Cap total token usage (input + output)
+
+You can also create custom stop conditions for specific needs (e.g., stop when certain tools are called, or when specific keywords appear).
+
+## Conversational memory
+
+Agents automatically maintain conversation history:
+
+```python
+conversation_id = uuid.uuid4()
+
+# First message
+response1 = await chat_agent.run("What's the weather in NYC?", conversation_id=conversation_id)
+
+# Follow-up (agent remembers context)
+response2 = await chat_agent.run("How about tomorrow?", conversation_id=conversation_id)
+# Agent knows we're still talking about NYC
+```
+
+Conversation history is durable - if the agent crashes, it resumes with complete context.
+
+## Using agents in workflows
+
+Agents are workflows, so you can compose them with other workflows:
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow
+async def customer_support(ctx: WorkflowContext, input: CustomerSupportInput):
+    # Agent handles the customer query
+    response = await ctx.step.agent_invoke_and_wait(
+        "customer_support_agent", # step key
+        customer_support_agent.with_input(input.question)
+    )
+    
+    # Update your customer support software with the interaction
+    await ctx.step.run("log", log_interaction, response)
+    
+    # Send follow-up email
+    await ctx.step.run("email", send_followup, input.customer_email, response)
+    
+    return response
+```
+
+## Human-in-the-loop
+
+Combine agents with approval gates for sensitive operations:
+
+```python
+@workflow
+async def approval_workflow(ctx: WorkflowContext, input: dict):
+    # Agent generates a plan
+    plan = await ctx.step.agent_invoke_and_wait(
+        "generate_plan",
+        planning_agent.with_input(input.task)
+    )
+    
+    # Suspend the workflow and wait for human approval
+    decision = await ctx.step.suspend(
+        step_key="suspend_step",
+        data={"plan": plan}
+    )
+
+    # Suspend waits for an event with event_type="resume" to be received on topic f"{step_key}/{execution_id}"
+    # Resumes here when the decision is received
+    if decision.approved:
+        # Execute the approved plan
+        result = await ctx.step.agent_invoke_and_wait("execute", executor_agent.with_input(plan))
+        return result
+    else:
+        return None
+```
+
+## Key takeaways
+
+- Agents handle LLM reasoning automatically - you just define tools and let them work
+- Run with `agent.run()` or stream with `agent.stream()`
+- Tools (defined with `@tool`) give agents the ability to act
+- Agents are durable - they survive crashes and resume from the last completed step
+- Use structured outputs for reliable data extraction
+- Stop conditions control execution and prevent runaway costs
+- Conversational memory maintained automatically
+- Compose agents in workflows for complex multi-step tasks
+
+## Learn more
+
+- **[Agent Guide](/agents/overview)** – Advanced agent patterns and techniques
+- **[Examples](/guides/cookbook-examples)** – Real-world agent implementations

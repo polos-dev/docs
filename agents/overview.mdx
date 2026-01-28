@@ -1,0 +1,273 @@
+---
+title: "Overview"
+icon: "robot"
+---
+
+Agents in Polos use LLMs to autonomously reason about tasks and decide which actions to take. This guide covers the fundamentals of creating and running agents.
+
+## Defining an agent
+
+Create an agent by specifying a model provider, system prompt, and optional tools:
+
+```python
+from polos import Agent, tool, WorkflowContext
+from pydantic import BaseModel
+
+class WeatherInput(BaseModel):
+    city: str
+
+class WeatherOutput(BaseModel):
+    temperature: float
+    condition: str
+    city: str
+
+@tool(description="Get current weather for a city")
+async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutput:
+    # Call weather API
+    data = await weather_api.get(input.city)
+    return WeatherOutput(
+        city=input.city,
+        temperature=data.temp,
+        condition=data.conditions
+    )
+
+weather_agent = Agent(
+    id="weather-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful weather assistant. Use the get_weather tool to answer questions about weather.",
+    tools=[get_weather]
+)
+```
+
+## Agent configuration
+
+**Required parameters:**
+
+- `id` - Unique identifier for the agent
+- `provider` - LLM provider (see supported providers below)
+- `model` - Model name (e.g., "gpt-4o", "claude-sonnet-4")
+
+**Optional parameters:**
+
+- `system_prompt` - Instructions that guide the agent's behavior
+- `tools` - List of tools the agent can call
+- `output_schema` - Pydantic model for structured outputs
+- `stop_conditions` - Conditions that terminate agent execution
+
+### Supported providers
+
+- `openai` - OpenAI (GPT-5, GPT-5-mini, GPT-4o, etc.)
+- `anthropic` - Anthropic (Claude Sonnet, Claude Opus, etc.)
+- `gemini` - Google Gemini
+- `groq` - Groq
+- `fireworks` - Fireworks AI
+- `together` - Together AI
+- `azure` - Azure OpenAI
+
+## Running agents
+
+### Synchronous execution with `agent.run()`
+
+Use `agent.run()` for complete execution:
+
+```python
+import asyncio
+
+async def main():
+    response = await weather_agent.run(
+        "What's the weather like in New York and London? Compare them."
+    )
+    
+    print(response.result)
+    # Agent automatically:
+    # 1. Calls get_weather("New York")
+    # 2. Calls get_weather("London")
+    # 3. Generates comparison
+    # 4. Returns final answer
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**How it works:**
+
+1. Agent receives your message
+2. LLM analyzes the request and decides if tools are needed
+3. If tools are needed, agent executes them. If multiple tool calls are needed, they are executed in parallel.
+4. Agent feeds tool results back to the LLM
+5. Process repeats until the agent has a final answer or hits a stop condition
+6. Returns the complete response
+
+### Provider-specific parameters
+
+You can pass any keyword argument supported by your provider:
+
+```python
+# Anthropic extended thinking
+response = await anthropic_agent.run(
+    "What's the weather in New York? How did it impact my day?",
+    thinking={
+        "type": "enabled",
+        "budget_tokens": 4000
+    }
+)
+
+# OpenAI reasoning
+response = await openai_agent.run(
+    "Analyze the weather patterns",
+    reasoning_effort="high"  # OpenAI o1 models
+)
+
+# Temperature and other common parameters
+response = await weather_agent.run(
+    "What's the weather?",
+    temperature=0.7,
+    max_tokens=1000,
+    top_p=0.9
+)
+```
+
+These parameters are passed directly to the underlying provider API.
+
+### Streaming with `agent.stream()`
+
+Stream responses for real-time feedback:
+
+```python
+async def main():
+    stream = await weather_agent.stream(
+        "What's the weather in Tokyo?"
+    )
+    
+    # Stream text chunks as they arrive
+    async for chunk in stream.text_chunks:
+        print(chunk, end="", flush=True)
+    
+    print("\n")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**Stream features:**
+
+- Real-time token streaming
+- Access to intermediate tool calls
+- Progress tracking
+
+You can also pass provider-specific parameters to `agent.stream()`:
+
+```python
+stream = await weather_agent.stream(
+    "Compare weather across multiple cities",
+    temperature=0.8,
+    max_tokens=2000
+)
+```
+
+See [Streaming](/agents/streaming) for advanced streaming patterns.
+
+## Agent responses
+
+Both `agent.run()` and `agent.stream()` return response objects with useful information:
+
+```python
+response = await weather_agent.run("What's the weather in SF?")
+
+# Access the final text result
+print(response.result)
+
+# View tool results
+for tool_result in response.tool_results:
+    print(f"Tool: {tool_result.tool_name}")
+    print(f"Input: {tool_result.result}")
+
+# Check token usage
+print(f"Total tokens: {response.usage.total_tokens}")
+print(f"Input tokens: {response.usage.input_tokens}")
+print(f"Output tokens: {response.usage.output_tokens}")
+```
+
+## Agent durability
+
+Agents in Polos are durable - they survive failures and resume from the last completed step.
+
+**What gets persisted:**
+
+- Tool call inputs and outputs
+- LLM reasoning steps
+- Conversation history
+- Agent state
+
+**Example recovery scenario:**
+
+```python
+# Agent execution starts
+response = await weather_agent.run("Compare weather in 5 cities")
+
+# Agent calls get_weather("New York") ✓ - cached
+# Agent calls get_weather("London") ✓ - cached
+# Worker crashes ❌
+
+# On retry:
+# Agent resumes from last completed step
+# get_weather("New York") - returns cached result (no API call)
+# get_weather("London") - returns cached result (no API call)
+# Continues with remaining cities
+```
+
+**Benefits:**
+
+- No duplicate tool calls
+- No wasted API tokens
+- No lost progress
+
+See [Durable Execution](/fundamentals/durable-execution) for how this works under the hood.
+
+## Using agents in workflows
+
+Agents are workflows, so you can compose them with other workflow steps:
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow
+async def customer_support_workflow(ctx: WorkflowContext, input: CustomerSupportInput):
+    # Run agent to handle customer query
+    agent_response = await ctx.step.agent_invoke_and_wait(
+        "weather_agent",
+        weather_agent.with_input(input.question)
+    )
+    
+    # Log the interaction
+    await ctx.step.run("log", log_interaction, agent_response)
+    
+    # Send follow-up email
+    await ctx.step.run(
+        "send_email",
+        send_email,
+        to=input.customer_email,
+        body=agent_response.result
+    )
+    
+    return agent_response
+```
+
+This combines agent autonomy with workflow orchestration for complex multi-step processes.
+
+## Next steps
+
+**Core features:**
+
+- **[Tools](/agents/tools)** - Give agents the ability to take actions
+- **[Streaming](/agents/streaming)** - Real-time response streaming
+- **[Structured Outputs](/agents/structured-outputs)** - Extract structured data
+
+**Advanced patterns:**
+
+- **[Stop Conditions](/agents/stop-conditions)** - Control when agents stop
+- **[Conversation Memory](/agents/conversation-memory)** - Multi-turn conversations
+- **[Human-in-the-Loop](/agents/human-in-the-loop)** - Approval workflows
+- **[Guardrails](/agents/guardrails)** - Safety and compliance
+- **[Lifecycle Hooks](/agents/lifecycle-hooks)** - Customize agent behavior
