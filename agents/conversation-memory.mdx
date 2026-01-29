@@ -1,6 +1,104 @@
 ---
 title: "Conversation memory"
-description: "Conversation memory for Polos agents"
+icon: "brain"
 ---
 
-Conversation memory maintains context across interactions. This page is coming soon.
+Conversation memory enables agents to maintain context across multiple interactions. Agents remember previous messages and use them to provide coherent, context-aware responses in multi-turn conversations.
+
+## Enabling conversation memory
+
+Set `conversation_history` to specify how many previous messages to retain:
+
+```python
+from polos import Agent
+
+conversational_agent = Agent(
+    id="chat-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful assistant. Be friendly and concise.",
+    conversation_history=10  # Keep last 10 messages (i.e. 5 conversation turns)
+)
+```
+
+The agent automatically manages conversation history - no manual bookkeeping required.
+**Defaults to conversation_history=10** when you don't specify anything.
+
+## Using conversation IDs
+
+Group related messages using `conversation_id`.
+
+Works with `agent.run()`:
+
+```python
+result = await research_agent.run(
+    user_message,
+    conversation_id=conversation_id
+)
+```
+
+and `agent.stream()`:
+```python
+stream = await research_agent.stream(
+    user_message,
+    conversation_id=conversation_id
+)
+```
+
+
+**How it works:**
+
+1. Agent retrieves past messages for this `conversation_id`
+2. Includes them in the LLM context
+3. Stores the new message after generating a response
+
+## Example
+
+```python
+import asyncio
+
+async def main():
+    conversation_id = "user-123-session-1"
+    
+    # Turn 1
+    response1 = await my_agent.run(
+        "My name is Alice and I love Python.",
+        conversation_id=conversation_id
+    )
+    print(response1.result)
+    
+    # Turn 2 - Agent remembers Alice and Python
+    response2 = await my_agent.run(
+        "What's my favorite programming language?",
+        conversation_id=conversation_id
+    )
+    print(response2.result)  # "Your favorite programming language is Python"
+    
+    # Turn 3 - Agent remembers the name
+    response3 = await my_agent.run(
+        "What's my name?",
+        conversation_id=conversation_id
+    )
+    print(response3.result)  # "Your name is Alice"
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## History limits
+
+The `conversation_history` parameter controls the maximum number of messages retained:
+
+```python
+# Keep last 20 messages
+agent = Agent(
+    id="agent",
+    conversation_history=20
+)
+```
+
+**What happens when the limit is exceeded:**
+
+- Oldest messages are dropped
+- Most recent messages (in this example, 20 messages) are kept
+- Agent always has the latest context

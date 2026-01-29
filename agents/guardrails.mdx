@@ -1,6 +1,328 @@
 ---
 title: "Guardrails"
-description: "Guardrails for Polos agents"
+icon: "shield-halved"
 ---
 
-Guardrails ensure agents operate within defined boundaries. This page is coming soon.
+Guardrails enforce safety, compliance, and quality rules on agent outputs. They run after the LLM generates a response but before tool execution, allowing you to validate or modify content before it's acted upon.
+
+## What are guardrails?
+
+Guardrails intercept agent responses and can:
+
+- **Stop execution** - Reject responses that violate rules
+- **Modify content** - Filter, redact, or transform responses before they continue
+
+Guardrails run synchronously after each LLM call, giving you fine-grained control over agent behavior.
+
+## String guardrails
+
+The simplest guardrails are natural language rules. Polos uses an LLM (the same model used by the agent) to evaluate these rules and returns pass/fail:
+
+```python
+from polos import Agent
+
+safety_agent = Agent(
+    id="safety-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful customer service assistant.",
+    tools=[search_knowledge_base, send_email],
+    guardrails=[
+        "Ensure the response does not contain any profanity or offensive language. "
+        "The response should be professional and appropriate for all audiences.",
+        
+        "Do not reveal internal company information, API keys, or confidential data. "
+        "Only share information from the official knowledge base."
+    ]
+)
+
+response = await safety_agent.run("How do I reset my password?")
+```
+
+**How it works:**
+
+1. LLM generates a response
+2. Guardrail LLM evaluates the response against each rule
+3. If any rule fails, execution stops and an error is returned
+4. If all rules pass, the response continues to tool execution or final output
+
+String guardrails return:
+
+```python
+{
+    "passed": False,
+    "reason": "Response contains confidential internal information"
+}
+```
+
+## Function guardrails
+
+For complex logic or content modification, use function guardrails:
+
+```python
+import re
+from polos import Agent, guardrail, GuardrailContext, GuardrailResult, WorkflowContext
+
+@guardrail
+def redact_sensitive_data(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    """Redact email addresses and credit card numbers from agent responses."""
+    content = guardrail_context.content
+    if content is None:
+        return GuardrailResult.continue_with()
+    
+    content_str = str(content)
+    modified = content_str
+    
+    # Redact email addresses
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    modified = re.sub(email_pattern, '[EMAIL_REDACTED]', modified)
+    
+    # Redact credit card numbers
+    cc_pattern = r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+    modified = re.sub(cc_pattern, '[CARD_REDACTED]', modified)
+    
+    # SSN pattern
+    ssn_pattern = r'\b\d{3}-\d{2}-\d{4}\b'
+    modified = re.sub(ssn_pattern, '[SSN_REDACTED]', modified)
+    
+    if modified != content_str:
+        return GuardrailResult.continue_with(modified_content=modified)
+    
+    return GuardrailResult.continue_with()
+
+privacy_agent = Agent(
+    id="privacy-agent",
+    provider="anthropic",
+    model="claude-sonnet-4",
+    system_prompt="You are a customer support agent. Help users with their accounts.",
+    tools=[get_user_info, update_account],
+    guardrails=[redact_sensitive_data]
+)
+
+response = await privacy_agent.run(
+    "What's my account information? My email is alice@example.com"
+)
+
+# Response will have email redacted: "Your email is [EMAIL_REDACTED]"
+```
+
+## Guardrail results
+
+Function guardrails return `GuardrailResult` with three options:
+
+### 1. Continue without changes
+
+```python
+@guardrail
+def simple_check(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    # Everything looks good, continue as-is
+    return GuardrailResult.continue_with()
+```
+
+### 2. Continue with modifications
+
+```python
+@guardrail
+def content_filter(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    content = guardrail_context.content or ""
+    
+    # Modify content
+    filtered = content.replace("bad_word", "***")
+    
+    return GuardrailResult.continue_with(modified_content=filtered)
+```
+
+### 3. Fail and stop execution
+
+```python
+@guardrail
+def compliance_check(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    content = str(guardrail_context.content or "").lower()
+    
+    if "confidential" in content:
+        return GuardrailResult.fail(
+            error_message="Response contains confidential information and was blocked"
+        )
+    
+    return GuardrailResult.continue_with()
+```
+
+## Guardrail context
+
+Guardrails receive a `GuardrailContext` with the current agent state:
+
+```python
+@guardrail
+def inspector(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    # Access the generated content
+    content = guardrail_context.content
+    
+    # Access tool calls (if any)
+    tool_calls = guardrail_context.tool_calls or []
+    
+    # Access the full message history
+    messages = guardrail_context.messages
+    
+    # Your validation logic here
+    return GuardrailResult.continue_with()
+```
+
+## Modifying tool calls
+
+Guardrails can also filter or modify tool calls:
+
+```python
+@guardrail
+def tool_call_filter(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    """Only allow specific tools to be called."""
+    tool_calls = guardrail_context.tool_calls or []
+    
+    if not tool_calls:
+        return GuardrailResult.continue_with()
+    
+    # Define allowed tools
+    allowed_tools = {"search_knowledge_base", "get_weather"}
+    
+    # Filter tool calls
+    filtered_calls = []
+    for tool_call in tool_calls:
+        if isinstance(tool_call, dict):
+            function_info = tool_call.get("function", {})
+            if isinstance(function_info, dict):
+                tool_name = function_info.get("name")
+                if tool_name in allowed_tools:
+                    filtered_calls.append(tool_call)
+                else:
+                    print(f"Blocked unauthorized tool: {tool_name}")
+    
+    # Return filtered list
+    return GuardrailResult.continue_with(modified_tool_calls=filtered_calls)
+
+restricted_agent = Agent(
+    id="restricted-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful assistant.",
+    tools=[search_knowledge_base, get_weather, send_email, delete_data],
+    guardrails=[tool_call_filter]  # Will block send_email and delete_data
+)
+```
+
+## Multiple guardrails
+
+Guardrails execute in order. If any guardrail fails, execution stops:
+
+```python
+@guardrail
+def content_length_limit(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    """Limit response length to 500 characters."""
+    content = str(guardrail_context.content or "")
+    
+    if len(content) > 500:
+        truncated = content[:500] + "... [truncated]"
+        return GuardrailResult.continue_with(modified_content=truncated)
+    
+    return GuardrailResult.continue_with()
+
+@guardrail
+def no_external_links(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
+    """Block responses containing external URLs."""
+    import re
+    content = str(guardrail_context.content or "")
+    
+    url_pattern = r'https?://[^\s]+'
+    if re.search(url_pattern, content):
+        return GuardrailResult.fail("Response contains external links, which are not allowed")
+    
+    return GuardrailResult.continue_with()
+
+safe_agent = Agent(
+    id="safe-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful assistant.",
+    guardrails=[
+        content_length_limit,    # Runs first
+        no_external_links,       # Runs second (on potentially modified content)
+        redact_sensitive_data,   # Runs third
+    ]
+)
+```
+
+**Execution order:**
+
+1. `content_length_limit` - Truncates if needed
+2. `no_external_links` - Checks for URLs (fails if found)
+3. `redact_sensitive_data` - Redacts PII
+
+If `no_external_links` fails, `redact_sensitive_data` never runs.
+
+## Mixing string and function guardrails
+
+You can combine both types:
+
+```python
+compliance_agent = Agent(
+    id="compliance-agent",
+    provider="anthropic",
+    model="claude-sonnet-4",
+    system_prompt="You are a financial advisor assistant.",
+    tools=[get_account_info, transfer_funds],
+    guardrails=[
+        redact_sensitive_data,  # Function guardrail
+        
+        "Ensure the response complies with financial regulations. "
+        "Do not provide specific investment advice or guarantees.",  # String guardrail
+        
+        "Verify that any financial information shared is accurate and "
+        "does not contain speculative predictions."  # String guardrail
+    ]
+)
+```
+
+## Use cases
+
+### Content safety
+
+```python
+@guardrail
+def profanity_filter(ctx, guardrail_context):
+    content = str(guardrail_context.content or "")
+    if contains_profanity(content):
+        return GuardrailResult.fail("Response contains inappropriate language")
+    return GuardrailResult.continue_with()
+```
+
+### Data privacy
+
+```python
+@guardrail
+def gdpr_compliance(ctx, guardrail_context):
+    content = str(guardrail_context.content or "")
+    # Redact PII: emails, phone numbers, addresses
+    sanitized = redact_pii(content)
+    return GuardrailResult.continue_with(modified_content=sanitized)
+```
+
+### Quality assurance
+
+```python
+# String guardrail for quality
+agent = Agent(
+    id="qa-agent",
+    guardrails=[
+        "Ensure the response is factually accurate and does not contain "
+        "unverified claims or speculation."
+    ]
+)
+```
+
+## Key takeaways
+
+- **Guardrails run after LLM responses but before tool execution**
+- **String guardrails** use LLM evaluation for pass/fail checks
+- **Function guardrails** provide custom logic and content modification
+- `GuardrailResult.continue_with()` - Pass (optionally with modifications)
+- `GuardrailResult.fail()` - Stop execution with error
+- **Multiple guardrails run in sequence**; first failure stops execution
+- **Modify content or tool calls** before they're acted upon

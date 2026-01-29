@@ -1,6 +1,135 @@
 ---
 title: "Stop conditions"
-description: "Stop conditions for Polos agents"
+icon: "stop"
 ---
 
-Stop conditions define when agents should stop execution. This page is coming soon.
+Stop conditions control when agent execution terminates. Use them to prevent runaway agents, control costs, or stop after specific criteria are met.
+
+## What are stop conditions?
+
+Stop conditions are functions that run after each agent step and return `True` to stop execution or `False` to continue. They're essential for:
+
+- **Cost control** - Limit token usage
+- **Preventing infinite loops** - Cap the number of reasoning steps
+- **Goal-based termination** - Stop after specific tools are called or text is generated
+- **Safety** - Halt execution when thresholds are exceeded
+
+They run after the LLM step and tool execution.
+
+## Built-in stop conditions
+
+- **Max tokens**: Stop when total token usage exceeds a limit.
+- **Max steps**: Stop when the number of reasoning steps reaches a threshold. Here, an LLM call along with any tool executions suggested by the LLM is considered a single step.
+- **Executed tool**: Stop when specific tools have been called.
+- **Has text**: Stop when specific text appears in the response.
+
+```python
+from polos import (
+    Agent,
+    max_tokens,
+    MaxTokensConfig,
+    max_steps,
+    MaxStepsConfig,
+    executed_tool,
+    ExecutedToolConfig
+)
+
+research_agent = Agent(
+    id="research-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="Research the topic thoroughly.",
+    tools=[search_web, read_article],
+    stop_conditions=[
+        max_tokens(MaxTokensConfig(limit=10000)),  # Stop at 10k tokens
+        max_steps(MaxStepsConfig(count=5)),  # Stop after 5 steps
+        executed_tool(ExecutedToolConfig(    # Stop after both get_weather and search_news are executed
+            tool_names=["get_weather", "search_news"]
+        )),
+        has_text(HasTextConfig(texts=["DONE"])) # Stop when the LLM response contains DONE
+    ]
+)
+
+response = await research_agent.run(
+    "Research AI agents and write a comprehensive report"
+)
+```
+
+Agent stops when **any of the stop conditions** are met.
+
+**Execution order:** Stop conditions are run in the order in which they are specified after each step. First condition that returns True stops the agent.
+
+## Custom stop conditions
+
+Define your own stop conditions for specific use cases:
+
+```python
+from polos import stop_condition, StopConditionContext
+from pydantic import BaseModel
+
+class MaxInputTokensConfig(BaseModel):
+    """Configuration for max_input_tokens stop condition."""
+    limit: int
+
+@stop_condition
+async def max_input_tokens(
+    ctx: StopConditionContext, 
+    config: MaxInputTokensConfig
+) -> bool:
+    """Stop when input tokens exceed limit."""
+    input_tokens = 0
+    for step in ctx.steps:
+        if step.usage:
+            input_tokens += step.usage.input_tokens
+    
+    return input_tokens >= config.limit
+
+# Use the custom stop condition
+context_aware_agent = Agent(
+    id="context-agent",
+    provider="openai",
+    model="gpt-4o",
+    tools=[search, analyze],
+    stop_conditions=[
+        max_input_tokens(MaxInputTokensConfig(limit=5000))
+    ]
+)
+```
+
+## Stop condition context
+
+Stop conditions receive a `StopConditionContext` with execution history:
+
+```python
+@stop_condition
+async def custom_condition(
+    ctx: StopConditionContext,
+    config: YourConfig
+) -> bool:
+    # Access all steps executed so far
+    for step in ctx.steps:
+        # Check content
+        content = step.content
+        
+        # Check token usage
+        if step.usage:
+            tokens = step.usage.total_tokens
+            input_tokens = step.usage.input_tokens
+            output_tokens = step.usage.output_tokens
+        
+        # Check tool calls
+        for tool_call in step.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = tool_call.function.arguments
+    
+    # Return True to stop, False to continue
+    return some_condition
+```
+
+## Key takeaways
+
+- **Stop conditions terminate agent execution** when criteria are met. Useful for cost control and safety.
+- **Built-in conditions:** `max_tokens`, `max_steps`, `executed_tool`, `has_text`
+- **Custom conditions** defined with `@stop_condition` decorator
+- **Multiple conditions** - agent stops when any returns `True`
+- **Access full execution history** via `StopConditionContext`

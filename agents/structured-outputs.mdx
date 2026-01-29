@@ -1,6 +1,232 @@
 ---
 title: "Structured outputs"
-description: "Structured outputs for Polos agents"
+icon: "table"
 ---
 
-Structured outputs ensure consistent data formats. This page is coming soon.
+Structured outputs let agents return data in a predefined format instead of natural language. This is essential for building reliable data extraction workflows, APIs, and integrations.
+
+## Defining structured outputs
+
+Use Pydantic models to define the output schema:
+
+```python
+from polos import Agent
+from pydantic import BaseModel, Field
+from typing import Optional
+from enum import Enum
+
+class PersonName(BaseModel):
+    first: str = Field(description="First name")
+    last: str = Field(description="Last name")
+
+class Gender(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
+    UNKNOWN = "unknown"
+
+class Person(BaseModel):
+    """Structured person information extracted from text."""
+    name: PersonName = Field(description="Person's name with first and last name")
+    age: int = Field(description="Age in years", ge=0, le=130)
+    email: Optional[str] = Field(description="Email address", default=None)
+    location: str = Field(description="City or location", default="")
+    gender: Gender = Field(description="Gender of the person", default=Gender.UNKNOWN)
+
+person_extractor = Agent(
+    id="person-extractor",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="Extract information about the person mentioned in the text"
+)
+```
+
+## Using with agent.run()
+
+The `result` field contains a fully validated Pydantic model instance:
+
+```python
+import asyncio
+
+async def main():
+    response = await person_extractor.run(
+        "Hi, I'm Alice Johnson, 28 years old, living in San Francisco. Email: alice@example.com"
+    )
+    
+    person = response.result  # Person (Pydantic model instance)
+    
+    print("Structured Output:")
+    print(f"  Name: {person.name.first} {person.name.last}")
+    print(f"  Age: {person.age}")
+    print(f"  Email: {person.email or '(not provided)'}")
+    print(f"  Location: {person.location or '(not provided)'}")
+    print(f"  Gender: {person.gender.value}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**Output:**
+
+```
+Structured Output:
+  Name: Alice Johnson
+  Age: 28
+  Email: alice@example.com
+  Location: San Francisco
+  Gender: unknown
+```
+
+The result is type-safe: you get autocomplete, validation, and runtime type checking.
+
+## Using with agent.stream()
+
+When streaming, the output is JSON that you can parse into your Pydantic model:
+
+```python
+async def main():
+    stream = await person_extractor.stream(
+        "My name is Bob Smith, I'm 35, and I live in Austin, Texas."
+    )
+    
+    print("Streaming structured output:")
+    output = ""
+    async for chunk in stream.text_chunks:
+        output += chunk
+        print(chunk, end="", flush=True)
+    
+    print("\n\nParsed structure:")
+    person = Person.model_validate_json(output)
+    print(f"  Name: {person.name.first} {person.name.last}")
+    print(f"  Age: {person.age}")
+    print(f"  Location: {person.location}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+**Output:**
+
+```
+Streaming structured output:
+{"name": {"first": "Bob", "last": "Smith"}, "age": 35, "email": null, "location": "Austin, Texas", "gender": "unknown"}
+
+Parsed structure:
+  Name: Bob Smith
+  Age: 35
+  Location: Austin, Texas
+```
+
+## Complex nested structures
+
+Structured outputs support nested models, lists, and enums:
+
+```python
+from typing import List
+from pydantic import BaseModel, Field
+from polos import Agent
+
+class Address(BaseModel):
+    street: str = Field(description="Street address", default="")
+    city: str = Field(description="City", default="")
+    country: str = Field(description="Country", default="")
+    postal_code: Optional[str] = Field(description="Postal code", default=None)
+
+class PhoneNumber(BaseModel):
+    type: str = Field(description="Type of phone number (can be mobile, work, home)", default="")
+    number: str = Field(description="Phone number", default="")
+
+class Contact(BaseModel):
+    name: str
+    email: str
+    phones: List[PhoneNumber] = []
+    address: Optional[Address] = None
+    notes: str = ""
+
+contact_extractor = Agent(
+    id="contact-extractor",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt="Extract contact information from text.",
+    output_schema=Contact
+)
+
+response = await contact_extractor.run("""
+John Doe
+Email: john@example.com
+Mobile: +1-555-0123
+Work: +1-555-0199
+Address: 123 Main St, New York, NY 10001
+""")
+
+contact = response.result
+print(f"Name: {contact.name}")
+for phone in contact.phones:
+    print(f"  {phone.type}: {phone.number}")
+print(f"Address: {contact.address}")
+```
+
+## Provider compatibility
+
+Not all model providers support structured output.
+
+- Some models don't support it at all
+- Some models support structured outputs only when no tools are present
+
+### Fallback behavior
+
+When a model doesn't natively support structured outputs, Polos automatically:
+
+1. Generates the natural language response
+2. Makes an additional LLM call to structure the output according to your schema
+3. Returns the validated Pydantic model
+
+This ensures your code works consistently across all providers, though it may consume extra tokens for models without native support.
+
+```python
+# This works even if the model doesn't natively support structured outputs
+# Polos will use an extra LLM call if needed
+response = await person_extractor.run("Extract info from: John, 30, NYC")
+person = response.result  # Always a validated Person instance
+```
+
+## Use cases
+
+### Data extraction
+
+```python
+# Extract invoice details from text/images
+invoice_extractor = Agent(
+    output_schema=Invoice,
+    system_prompt="Extract invoice data including line items, totals, dates"
+)
+```
+
+### Form processing
+
+```python
+# Convert natural language to structured form data
+form_filler = Agent(
+    output_schema=ApplicationForm,
+    system_prompt="Fill out application forms from user descriptions"
+)
+```
+
+### API responses
+
+```python
+# Build type-safe APIs with guaranteed response structure
+api_handler = Agent(
+    output_schema=APIResponse,
+    system_prompt="Process requests and return structured API responses"
+)
+```
+
+### Content categorization
+
+```python
+# Classify and tag content
+classifier = Agent(
+    output_schema=ContentClassification,
+    system_prompt="Categorize content with tags, sentiment, topics"
+)
+```
