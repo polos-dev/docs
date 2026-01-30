@@ -43,7 +43,7 @@ response = await safety_agent.run("How do I reset my password?")
 
 1. LLM generates a response
 2. Guardrail LLM evaluates the response against each rule
-3. If any rule fails, execution stops and an error is returned
+3. If any rule fails, Polos feeds the error to the LLM to attempt correction (up to `guardrail_max_retries` times, default: 2)
 4. If all rules pass, the response continues to tool execution or final output
 
 String guardrails return:
@@ -166,6 +166,32 @@ def inspector(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> Guar
     # Your validation logic here
     return GuardrailResult.continue_with()
 ```
+
+## Guardrail retries
+
+Configure guardrail retry behavior on the agent:
+
+```python
+from polos import Agent
+
+safety_agent = Agent(
+    id="safety-agent",
+    provider="openai",
+    model="gpt-4o",
+    system_prompt="You are a helpful assistant.",
+    guardrails=[
+        "Ensure responses are professional and appropriate."
+    ],
+    guardrail_max_retries=3  # Retry up to 3 times (default: 2)
+)
+```
+
+**When a guardrail fails:**
+
+- Polos feeds the guardrail error message to the LLM
+- The LLM attempts to correct the response based on the error
+- This process repeats up to `guardrail_max_retries` times
+- If all retries fail, execution stops with the guardrail error
 
 ## Modifying tool calls
 
@@ -324,5 +350,6 @@ agent = Agent(
 - **Function guardrails** provide custom logic and content modification
 - `GuardrailResult.continue_with()` - Pass (optionally with modifications)
 - `GuardrailResult.fail()` - Stop execution with error
+- **When guardrails fail, Polos retries** by feeding the error to the LLM (up to `guardrail_max_retries` times, default: 2)
 - **Multiple guardrails run in sequence**; first failure stops execution
 - **Modify content or tool calls** before they're acted upon

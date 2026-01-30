@@ -3,7 +3,7 @@
 /* Target logo specifically without affecting other elements */
 a[href="/"] > img,
 a[href="/"] > svg {
-  width: 140px !important;
+  width: 100px !important;
   height: auto !important;
   max-width: 200px !important;
   padding: 10px !important;

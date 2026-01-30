@@ -1,250 +1,224 @@
 ---
-title: "Workflow"
-description: "Learn about workflows in Polos"
+title: "Overview"
+icon: "diagram-project"
 ---
 
-# Workflows
-
-Workflows are the core building block in Polos. A workflow is durable code—it survives failures and resumes exactly where it stopped.
+Workflows are the foundation of Polos. They're durable functions that survive failures, maintain state, and resume exactly where they stopped.
 
 ## What is a workflow?
 
-A workflow is a Python function decorated with `@workflow`. It receives a `WorkflowContext` (ctx) and your input data. The context provides methods to run steps, invoke other workflows, and wait for events.
+A workflow is a Python function decorated with `@workflow`. It can contain steps, call other workflows, wait for events, and use normal programming constructs like loops and conditionals.
 
 ```python
 from polos import workflow, WorkflowContext
 
 @workflow
-async def research_agent(ctx: WorkflowContext, input: ResearchInput):
-    # Step 1: Search for information
-    results = await ctx.step.run("search_web", search_web, input.topic)
+async def process_order(ctx: WorkflowContext, input: dict):
+    # Step 1: Validate order
+    order = await ctx.step.run("validate", validate_order, input)
     
-    # Step 2: Analyze results (dynamic logic)
-    if len(results) > 10:
-        summary = await ctx.step.run("summarize", summarize_results, results)
-    else:
-        summary = await ctx.step.run("detailed_analysis", detailed_analysis, results)
+    # Step 2: Charge payment
+    payment = await ctx.step.run("charge", charge_stripe, order)
     
-    # Step 3: Generate report
-    report = await ctx.step.run("generate_report", generate_report, summary)
+    # Step 3: Send confirmation
+    await ctx.step.run("send_email", send_confirmation, order)
     
-    return report
-
-async def search_web(query: str):
-    # This function will be executed as a durable step
-    response = await http_client.get(f"https://api.search.com?q={query}")
-    return response.json()
+    return {"order_id": order.id, "status": "completed"}
 ```
 
-## Steps: The unit of durability
+**What makes workflows special:**
 
-Steps are the fundamental unit of durable execution in Polos. Each step is identified by a **step key** (like `"search_web"` or `"generate_report"`). 
+- **Durable** - Survive crashes and resume from the last completed step
+- **Stateful** - Maintain context across execution
+- **Composable** - Call other workflows and wait for results
+- **Observable** - Track execution with real-time events
 
-**Critical rule:** The combination of `(execution_id, step_key)` must be unique. If a workflow replays, Polos checks if a step with that key already completed—if so, it skips execution and returns the cached result.
+## Why workflows?
 
-### Running steps
+Traditional functions fail completely when something goes wrong. Workflows persist progress at each step:
+
+**Without workflows:**
+
+```python
+async def process_order(order):
+    validate_order(order)           # ✓ Completes
+    charge_stripe(order)            # ✓ Completes
+    send_confirmation(order)        # ❌ Server crashes
+    # On restart: Everything runs again
+    # Result: Customer charged twice
+```
+
+**With workflows:**
 
 ```python
 @workflow
-async def process_order(ctx: WorkflowContext, input: OrderInput):
-    # Run a function as a step
-    order = await ctx.step.run("fetch_order", fetch_order, input.order_id)
-    
-    # Non-deterministic operations MUST be in steps
-    timestamp = await ctx.step.run("get_time", lambda: datetime.now())
-    
-    # Side effects MUST be in steps
-    await ctx.step.run("charge_payment", charge_payment, order)
-    await ctx.step.run("send_confirmation", send_confirmation, order)
-    
-    return {"status": "completed", "timestamp": timestamp}
+async def process_order(ctx: WorkflowContext, input: dict):
+    order = await ctx.step.run("validate", validate_order, input)   # ✓ Cached
+    payment = await ctx.step.run("charge", charge_stripe, order)    # ✓ Cached
+    await ctx.step.run("send_email", send_confirmation, order)      # ❌ Crashes
+    # On restart: Resumes from send_email
+    # Result: Customer charged once, email sent successfully
 ```
 
-**What should be a step?**
-- ✅ External API calls (OpenAI, Stripe, databases)
-- ✅ Non-deterministic operations (LLM calls, `datetime.now()`, `random()`)
-- ✅ Side effects (sending emails, charging cards, writing to DB)
-- ❌ Pure logic (if statements, loops, string manipulation)
+## Workflow context
 
-### Why step keys matter
+Every workflow receives a `WorkflowContext` with execution metadata and methods:
 
 ```python
 @workflow
-async def bad_example(ctx: WorkflowContext, input: Input):
-    # ❌ BAD: Same step key in a loop
-    for item in input.items:
-        await ctx.step.run("process", process_item, item)  # Collision!
+async def example_workflow(ctx: WorkflowContext, input: dict):
+    # Execution identifiers
+    execution_id = ctx.execution_id
+    workflow_id = ctx.workflow_id
     
-@workflow
-async def good_example(ctx: WorkflowContext, input: Input):
-    # ✅ GOOD: Unique step key per iteration
-    for i, item in enumerate(input.items):
-        await ctx.step.run(f"process_{i}", process_item, item)
+    # User context
+    user_id = ctx.user_id
+    session_id = ctx.session_id
+    
+    # Timestamps
+    created_at = ctx.created_at
+    started_at = ctx.started_at
+    
+    # Step methods
+    result = await ctx.step.run("step_name", function, args)
+    await ctx.step.wait_for("wait_step", seconds=60)
+    
+    return {"status": "completed"}
 ```
 
-## Workflow composition
+## Key concepts
 
-### Invoke and wait
+### Steps
 
-Call a child workflow and wait for it to complete. The parent workflow **suspends execution** while waiting—no compute resources are consumed.
+Steps are the unit of durability. Each step's output is persisted when the step completes.
 
 ```python
 @workflow
-async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
-    message = input.message
-    
-    # Print the message
-    await ctx.step.run("print", print_message, message)
-    
-    # Invoke child workflow and wait for result
-    result = await ctx.step.invoke_and_wait(
+async def example(ctx: WorkflowContext, input: dict):
+    # Each step is durable
+    step1 = await ctx.step.run("step1", func1, input)
+    step2 = await ctx.step.run("step2", func2, step1)
+    step3 = await ctx.step.run("step3", func3, step2)
+```
+
+See [Steps](/workflows/steps) for details.
+
+### Workflow composition
+
+Workflows can call other workflows or agents. They can wait for those to complete or simply trigger them as fire-and-forget.
+
+```python
+@workflow
+async def parent(ctx: WorkflowContext, input: ParentInput):
+    # Call child workflow but don't wait for it to complete
+    exec_handle = await ctx.step.invoke(
         "call_child",
         child_workflow,
-        ChildInput(message="Hello from parent!")
+        {"data": input.data}
     )
     
-    # Parent resumes here when child completes
-    final = await ctx.step.run("combine", combine_results, message, result)
-    return final
-
-@workflow
-async def child_workflow(ctx: WorkflowContext, input: ChildInput):
-    return f"Processed: {input.message}"
-```
-
-**What happens:**
-1. Parent invokes child workflow
-2. **Worker suspends parent execution** (no compute consumed)
-3. Orchestrator executes child
-4. When child completes, orchestrator resumes parent with result
-
-### Invoke without waiting
-
-Trigger a workflow but don't wait for it to complete (fire-and-forget).
-
-```python
-@workflow
-async def send_notification(ctx: WorkflowContext, input: NotificationInput):
-    # Wait for 5 minutes
-    await ctx.step.wait_for("wait_5_min", minutes=5)
-    
-    # Trigger email workflow but don't wait
-    await ctx.step.invoke(
-        "send_email", 
-        send_email_workflow, 
-        EmailInput(to=input.email, message=input.message)
+    # Call agent and wait
+    response = await ctx.step.agent_invoke_and_wait(
+        "research_agent",
+        research_agent.with_input(input.data)
     )
-    
-    # Continue immediately (email sends in background)
-    return {"status": "notification_scheduled"}
-```
-
-### Batch invocations
-
-Execute multiple workflows in parallel and wait for all to complete.
-
-```python
-from polos import BatchWorkflowInput
+    return response.result
 
 @workflow
-async def process_batch(ctx: WorkflowContext, input: BatchInput):
-    # Prepare batch inputs
-    batch_inputs = [
-        BatchWorkflowInput(id="process_item", payload={"item": "A"}),
-        BatchWorkflowInput(id="process_item", payload={"item": "B"}),
-        BatchWorkflowInput(id="process_item", payload={"item": "C"}),
-    ]
-    
-    # Execute all in parallel, wait for completion
-    results = await ctx.step.batch_invoke_and_wait("batch_process", batch_inputs)
-    
-    # Worker is suspended during execution (no compute consumed)
-    # Resumes here when all complete
-    combined = await ctx.step.run("combine", combine_results, results)
-    return combined
+async def child_workflow(ctx: WorkflowContext, input: dict):
+    # Process data
+    return {"processed": True}
 ```
 
-## Waiting
+### Control flow
 
-Workflows can pause execution to wait for time or events. **During waits, the worker suspends execution**—no compute resources are consumed.
-
-### Time-based waits
+Use normal Python control flow:
 
 ```python
 @workflow
-async def delayed_workflow(ctx: WorkflowContext, input: Input):
-    # Process immediately
-    data = await ctx.step.run("fetch", fetch_data)
+async def conditional_workflow(ctx: WorkflowContext, input: ConditionalWorkflowInput):
+    # Conditionals
+    if input.amount > 1000:
+        await ctx.step.run("high_value", process_high_value, input)
+    else:
+        await ctx.step.run("standard", process_standard, input)
     
-    # Wait 1 hour (worker suspends, no compute cost)
-    await ctx.step.wait_for("wait_1_hour", hours=1)
+    # Loops
+    for item in input.items:
+        await ctx.step.run(f"process_{item.id}", process_item, item)
     
-    # Resume after 1 hour
-    result = await ctx.step.run("process", process_data, data)
-    return result
-```
-
-### Event-based waits
-
-```python
-@workflow
-async def approval_workflow(ctx: WorkflowContext, input: Input):
-    # Submit for approval
-    await ctx.step.run("request_approval", request_approval, input.data)
-    
-    # Wait for approval event (could be hours or days)
-    # Worker suspends—no compute consumed while waiting
-    approval = await ctx.step.wait_for_event("wait_approval", topic="approval.response")
-    
-    # Resume when event arrives
-    if approval.data["approved"]:
-        await ctx.step.run("execute", execute_action, input.data)
-```
-
-## Control flow
-
-Workflows support normal programming constructs:
-
-```python
-@workflow
-async def dynamic_workflow(ctx: WorkflowContext, input: DynamicInput):
-    # Conditional branches
-    if input.needs_approval:
-        await ctx.step.run("request", request_approval)
-    
-    # Loops with unique step keys
-    for i, item in enumerate(input.items):
-        await ctx.step.run(f"process_{i}", process_item, item)
-    
-    # Parallel batch execution
-    batch = [
-        BatchWorkflowInput(id="task", payload={"task": "A"}),
-        BatchWorkflowInput(id="task", payload={"task": "B"}),
-    ]
-    results = await ctx.step.batch_invoke_and_wait("parallel_tasks", batch)
+    # Parallel execution
+    results = await asyncio.gather(
+        ctx.step.run("task_a", task_a, input),
+        ctx.step.run("task_b", task_b, input),
+        ctx.step.run("task_c", task_c, input)
+    )
     
     return results
 ```
 
-## Starting workflows
+### Waits and events
 
-### 1. Direct invocation (API/SDK)
+Workflows can pause and resume:
 
 ```python
-from polos import Client
-
-client = Client(api_key="...")
-result = await client.workflows.invoke(
-    workflow="research_agent",
-    payload={"topic": "AI agents"}
-)
+@workflow
+async def approval_workflow(ctx: WorkflowContext, input: ApprovalWorkflowInput):
+    # Process request
+    request = await ctx.step.run("process", process_request, input)
+    
+    # Wait for approval event
+    approval = await ctx.step.wait_for_event(
+        "wait_approval",
+        topic="approval.response"
+    )
+    
+    if approval.data["approved"]:
+        result = await ctx.step.run("execute", execute_action, request)
+        return result
 ```
+
+See [Waits](/workflows/waits) and [Events](/workflows/event-triggered-workflows) for details.
+
+## Starting workflows
+
+Workflows can be started in three ways:
+
+### 1. Invoke using API or SDK
+
+```python
+result = await order_workflow.invoke(
+    payload={"order_id": "123"}
+
+```
+
+You can also invoke multiple workflows or agents in parallel:
+
+```python
+from polos import batch_invoke, batch_agent_invoke, BatchWorkflowInput
+
+# Batch invoke multiple workflows
+handles = await batch_invoke([
+    BatchWorkflowInput(id="workflow-1", payload={"foo": "bar"}),
+    BatchWorkflowInput(id="workflow-2", payload={"baz": 42}),
+    BatchWorkflowInput(id="workflow-3", payload={"qux": "test"}),
+])
+
+# Batch invoke multiple agents
+agent_handles = await batch_agent_invoke([
+    grammar_agent.with_input("Check this text"),
+    tone_agent.with_input("Check this text"),
+    accuracy_agent.with_input("Check this text"),
+])
+```
+
+**Note:** Batch invoke cannot be called from within a workflow. Use `ctx.step.batch_invoke()` or `ctx.step.batch_agent_invoke()` when calling from within workflows. See [Steps](/workflows/steps) for details.
 
 ### 2. Scheduled execution
 
 ```python
 @workflow(schedule="0 9 * * *")  # Daily at 9am
-async def daily_report(ctx: WorkflowContext, input: None):
+async def daily_report(ctx: WorkflowContext, input: dict):
     data = await ctx.step.run("fetch", fetch_data)
     report = await ctx.step.run("generate", generate_report, data)
     await ctx.step.run("send", send_email, report)
@@ -253,24 +227,18 @@ async def daily_report(ctx: WorkflowContext, input: None):
 ### 3. Event-triggered
 
 ```python
-from polos import event_trigger
-
-@event_trigger(topic="user.signup")
-async def onboard_user(ctx: WorkflowContext, event: Event):
+@workflow(trigger_on_event="user.signup")
+async def onboard_user(ctx: WorkflowContext, event: dict):
     user_id = event.data["user_id"]
     await ctx.step.run("welcome", send_welcome_email, user_id)
-    await ctx.step.run("sample_data", create_sample_data, user_id)
+    await ctx.step.run("setup", create_sample_data, user_id)
 ```
 
 ## Key takeaways
 
-- **Step keys must be unique** per execution—use variables in loops: `f"step_{i}"`
-- **Workers suspend during waits**—no compute consumed while waiting for events, timeouts, or child workflows
-- **Steps are cacheable**—if a workflow replays, completed steps return cached results
-- **Use steps for non-deterministic operations**—anything that could return different values on replay
-
-## Next steps
-
-- **[Durable Execution](/fundamentals/durable-execution)** – Deep dive into how steps and replay work
-- **[Agents](/agents/overview)** – Build autonomous agents using workflows
-- **[Examples](/guides/cookbook-examples)** – See real-world workflow patterns
+- **Workflows are durable functions** - They survive failures and resume from the last completed step
+- **Steps are the unit of durability** - Each step's output is persisted
+- **WorkflowContext provides execution metadata** - Access IDs, timestamps, and step methods
+- **Compose workflows** - Call other workflows and wait for results
+- **Use normal Python control flow** - Conditionals, loops, and parallel execution
+- **Start workflows** - Via API, schedule, or events

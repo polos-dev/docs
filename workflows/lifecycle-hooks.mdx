@@ -1,0 +1,150 @@
+---
+title: "Lifecycle hooks"
+icon: "code-branch"
+---
+
+Lifecycle hooks let you customize workflow behavior at execution boundaries. Use hooks for logging, validation, modifying inputs/outputs, or adding context.
+
+Workflows have two lifecycle hooks:
+
+- `on_start` - Before workflow execution begins
+- `on_end` - After workflow execution completes
+
+<Note>
+Child workflows and agents also have their own `on_start` and `on_end` hooks.
+</Note>
+
+## Defining hooks
+
+Create hooks using the `@hook` decorator:
+
+```python
+from polos import hook, WorkflowContext, HookContext, HookResult
+
+@hook
+def log_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
+    """Log execution details."""
+    print(f"Workflow: {hook_context.workflow_id}")
+    print(f"Payload: {hook_context.current_payload}")
+    
+    return HookResult.continue_with()
+```
+
+**Hook signature:**
+
+- `ctx` - `WorkflowContext` with execution metadata
+- `hook_context` - `HookContext` with current execution state
+- Returns - `HookResult` indicating what action to take
+
+## Hook results
+
+Hooks return `HookResult` with three options:
+
+### 1. Continue without changes
+
+```python
+@hook
+def simple_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
+    # Just observe, don't modify
+    print("Hook executed")
+    return HookResult.continue_with()
+```
+
+### 2. Continue with modifications
+
+```python
+import re
+
+@hook
+def redact_pii_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
+    """Redact sensitive information from payloads."""
+    if not hook_context.current_payload:
+        return HookResult.continue_with()
+    
+    modified = hook_context.current_payload.copy()
+    
+    # Redact emails
+    if isinstance(modified, dict):
+        for key, value in modified.items():
+            if isinstance(value, str):
+                modified[key] = re.sub(
+                    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+                    '[EMAIL_REDACTED]',
+                    value
+                )
+    
+    return HookResult.continue_with(modified_payload=modified)
+```
+
+### 3. Fail and stop execution
+
+```python
+@hook
+def validation_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
+    """Validate payload before execution."""
+    payload = hook_context.current_payload
+    
+    if not payload or not payload.get("required_field"):
+        return HookResult.fail("Missing required field")
+    
+    return HookResult.continue_with()
+```
+
+## Attaching hooks to workflows
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow(
+    id="data-processor",
+    on_start=[log_hook, validate_input_hook],
+    on_end=[log_hook, save_results_hook]
+)
+async def data_processor(ctx: WorkflowContext, input: dict):
+    # Process data
+    result = await ctx.step.run("process", process_data, input)
+    return result
+```
+
+## Hook context
+
+Hooks receive `HookContext` with execution state:
+
+```python
+@hook
+def inspect_context_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
+    # Workflow information
+    workflow_id = hook_context.workflow_id
+    
+    # User context
+    user_id = hook_context.user_id
+    session_id = hook_context.session_id
+    
+    # Execution state
+    current_payload = hook_context.current_payload
+    current_output = hook_context.current_output
+    
+    # Step history (list of completed steps) - only available for agents
+    steps = hook_context.steps
+    
+    return HookResult.continue_with()
+```
+
+## Multiple hooks
+
+Hooks run in order. If any hook fails, execution stops:
+
+```python
+@workflow(
+    id="multi-hook-workflow",
+    on_start=[
+        validate_input_hook,     # Runs first
+        redact_pii_hook,         # Runs second (on validated input)
+        add_metadata_hook        # Runs third (on redacted input)
+    ]
+)
+async def multi_hook_workflow(ctx: WorkflowContext, input: dict):
+    return await ctx.step.run("process", process_data, input)
+```
+
+If `validate_input_hook` fails, `redact_pii_hook` and `add_metadata_hook` never run.

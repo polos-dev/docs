@@ -107,7 +107,7 @@ result = await research.invoke(ResearchInput(topic="AI agents"))
 **2. Event-triggered**
 
 ```python
-@event_trigger(topic="user.signup")
+@workflow(trigger_on_event="user.signup")
 async def onboard_user(ctx: WorkflowContext, event: UserSignUpEvent):
     # runs when event occurs
 ```

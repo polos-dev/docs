@@ -53,14 +53,14 @@
             "pages": [
               "workflows/overview",
               "workflows/steps",
-              "workflows/invoking-workflows",
               "workflows/scheduled-workflows",
               "workflows/event-triggered-workflows",
               "workflows/waits",
               "workflows/queues-and-concurrency",
               "workflows/cancelling-workflows",
               "workflows/workflow-state",
-              "workflow/streaming-events"
+              "workflows/streaming-events",
+              "workflows/lifecycle-hooks"
             ]
           },
           {

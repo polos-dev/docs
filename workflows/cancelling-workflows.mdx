@@ -1,6 +1,131 @@
 ---
 title: "Cancelling workflows"
-description: "Cancelling workflows in Polos"
+icon: "stop"
 ---
 
-Cancelling workflows. This page is coming soon.
+Stop workflows to prevent runaway executions and free up resources. Workflows can be cancelled via timeout or manual cancellation.
+
+## Timeout-based cancellation
+
+Set `run_timeout_seconds` to automatically cancel workflows that run too long:
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow
+async def risky_workflow(ctx: WorkflowContext, input: dict):
+    # Potentially long-running workflow
+
+# Invoke with timeout
+handle = await risky_workflow.invoke(
+    payload={"data": "..."},
+    run_timeout_seconds=1800  # Cancel after 30 minutes
+)
+```
+
+**How timeouts work:**
+
+- Only applies to running workflows (actively executing)
+- Does not apply to waiting workflows (paused on `wait_for`, `wait_for_event`, etc.)
+- Orchestrator and/or worker automatically cancels execution when timeout is reached
+- Workflow stops immediately
+
+**Example with waits:**
+
+```python
+@workflow
+async def workflow_with_waits(ctx: WorkflowContext, input: dict):
+    # Step 1: Process (counts toward timeout)
+    await ctx.step.run("process", process_data, input)
+    
+    # Step 2: Wait 1 hour (does NOT count toward timeout)
+    await ctx.step.wait_for("wait", hours=1)
+    
+    # Step 3: More processing (counts toward timeout, but resets execution time of step 1)
+    await ctx.step.run("finalize", finalize_data, input)
+
+# Timeout only counts running time, not waiting time
+handle = await workflow_with_waits.invoke(
+    payload={...},
+    run_timeout_seconds=60  # 60 seconds of continuous running time
+)
+```
+
+**Run timeout vs total duration:**
+
+- `run_timeout_seconds=60` → Workflow can run for 60 seconds of active execution
+- If workflow waits for 24 hours, that time does not count toward timeout
+- Total workflow duration can exceed `run_timeout_seconds` if it includes waits
+
+## Manual cancellation
+
+Cancel workflows manually using the SDK or API
+
+```python
+from polos import cancel_execution
+
+# Start workflow
+handle = await risky_workflow.invoke({"data": "..."})
+
+# Cancel manually
+cancelled = await cancel_execution(handle.id)
+
+if cancelled:
+    print("Workflow cancelled successfully")
+else:
+    print("Workflow already completed or not found")
+```
+
+**Or via the handle:**
+
+```python
+handle = await risky_workflow.invoke({"data": "..."})
+
+# Cancel using handle
+cancelled = await handle.cancel()
+```
+
+**Or via API:**
+
+```python
+import httpx
+
+async def cancel_workflow_api(execution_id: str, api_key: str):
+    """Cancel workflow via API."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.polos.ai/api/v1/executions/{execution_id}/cancel",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        
+        if response.status_code == 200:
+            return True
+        elif response.status_code == 404:
+            print(f"Execution not found: {execution_id}")
+            return False
+        else:
+            response.raise_for_status()
+```
+
+### What can be cancelled
+
+- ✅ Running, queued or waiting workflows can be cancelled
+- ❌ Completed or failed workflows cannot be cancelled
+
+### How does it work?
+
+When a workflow is cancelled:
+
+1. Orchestrator issues cancel signal to the worker
+2. Worker stops execution immediately
+3. Workflow status changes to "cancelled"
+4. No more steps execute
+
+**Current step behavior:**
+
+- If a step is running when cancel is issued, it may complete before stopping
+- Steps are not interrupted mid-execution
+- Cancellation takes effect between steps
