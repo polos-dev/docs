@@ -7,7 +7,7 @@ Agents use LLMs to reason about tasks and autonomously decide which actions to t
 
 ```python
 import asyncio
-from polos import Agent, tool, WorkflowContext
+from polos import PolosClient, Agent, tool, WorkflowContext
 from pydantic import BaseModel
 
 class WeatherInput(BaseModel):
@@ -26,8 +26,9 @@ weather_agent = Agent(
 )
 
 async def main():
+    client = PolosClient()
     # Run the agent
-    response = await weather_agent.run("What's the weather in NYC?")
+    response = await weather_agent.run(client, "What's the weather in NYC?")
     print(response.result)
 
 if __name__ == "__main__":
@@ -58,10 +59,11 @@ Under the hood, agents are built on Polos [workflows](/fundamentals/workflows) w
 
 ### Direct execution
 
-Use `agent.run()` for simple execution:
+Use `agent.run()` to generate complete response from LLM.
 
 ```python
 response = await weather_agent.run(
+    client,
     "Compare the weather in NYC and London",
     reasoning={"effort": "medium"}
 )
@@ -81,7 +83,7 @@ The agent:
 Stream responses for real-time user experience:
 
 ```python
-result = await weather_agent.stream("What's the weather in Tokyo?")
+result = await weather_agent.stream(client, "What's the weather in Tokyo?")
 
 # Stream text chunks as they arrive
 async for chunk in result.text_chunks:
@@ -144,6 +146,7 @@ Instead of natural language, agents can return structured data:
 
 ```python
 from pydantic import BaseModel, Field
+from polos import PolosClient, Agent
 
 class PersonInfo(BaseModel):
     name: str = Field(description="Full name")
@@ -160,8 +163,9 @@ person_extractor = Agent(
 )
 
 async def main():
+    client = PolosClient()
     response = await person_extractor.run(
-        "Hi, I'm Alice, 28 years old, living in SF. Email: alice@example.com"
+        client, "Hi, I'm Alice, 28 years old, living in SF. Email: alice@example.com"
     )
 
     # response.result is a PersonInfo object
@@ -210,10 +214,14 @@ Agents automatically maintain conversation history:
 conversation_id = uuid.uuid4()
 
 # First message
-response1 = await chat_agent.run("What's the weather in NYC?", conversation_id=conversation_id)
+response1 = await chat_agent.run(
+    client, "What's the weather in NYC?", conversation_id=conversation_id
+)
 
 # Follow-up (agent remembers context)
-response2 = await chat_agent.run("How about tomorrow?", conversation_id=conversation_id)
+response2 = await chat_agent.run(
+    client, "How about tomorrow?", conversation_id=conversation_id
+)
 # Agent knows we're still talking about NYC
 ```
 
@@ -262,11 +270,14 @@ async def approval_workflow(ctx: WorkflowContext, input: dict):
         data={"plan": plan}
     )
 
-    # Suspend waits for an event with event_type="resume" to be received on topic f"{step_key}/{execution_id}"
-    # Resumes here when the decision is received
-    if decision.approved:
+    # Suspend waits for an event with event_type="resume" to be received
+    # on topic f"{step_key}/{execution_id}".
+    # Resumes here when the decision is received.
+    if decision.data["approved"]:
         # Execute the approved plan
-        result = await ctx.step.agent_invoke_and_wait("execute", executor_agent.with_input(plan))
+        result = await ctx.step.agent_invoke_and_wait(
+            "execute", executor_agent.with_input(plan)
+        )
         return result
     else:
         return None

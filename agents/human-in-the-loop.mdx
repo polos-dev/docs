@@ -48,7 +48,7 @@ async def approval_workflow(ctx: WorkflowContext, input: ApprovalWorkflowInput):
     plan = plan_response.result  # ActionPlan (structured output)
     
     # Step 2: Suspend and wait for approval
-    approval_data = await ctx.step.suspend(
+    approval = await ctx.step.suspend(
         step_key="wait_for_approval",
         data={
             "description": plan.description,
@@ -61,7 +61,7 @@ async def approval_workflow(ctx: WorkflowContext, input: ApprovalWorkflowInput):
     )
     
     # Step 3: Resumes here when approval event is received. Execute if approved.
-    if approval_data.get("approved"):
+    if approval.data.get("approved"):
         result = await ctx.step.run(
             "execute_plan",
             execute_action,
@@ -109,11 +109,13 @@ Listen to the suspend topic to know when workflows need attention:
 
 ```python
 import asyncio
-from polos import events
+from polos import events, PolosClient
 
 async def main():
+    client = PolosClient()
+
     # Start the workflow
-    handle = await approval_workflow.invoke({
+    handle = await approval_workflow.invoke(client, {
         "request": "delete old customer records from archive"
     })
     
@@ -144,12 +146,14 @@ if __name__ == "__main__":
 To resume a suspended workflow, emit a resume event to the same topic:
 
 ```python
-from polos import resume
+from polos import PolosClient
 from datetime import datetime
 
 async def approve_workflow():
+    client = PolosClient()
+
     # Resume with approval
-    await resume(
+    await client.resume(
         suspend_execution_id="abc-123-def-456",  # Workflow execution ID
         suspend_step_key="wait_for_approval",     # Step key from suspend()
         data={
@@ -169,7 +173,7 @@ Here's a full approval workflow with suspend/resume:
 
 ```python
 import asyncio
-from polos import workflow, WorkflowContext, events, resume
+from polos import workflow, WorkflowContext, events, PolosClient
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -209,7 +213,7 @@ async def charge_customer_workflow(ctx: WorkflowContext, input: ChargeRequest):
             timeout=7200  # 2 hours
         )
         
-        if not approval.get("approved"):
+        if not approval.data.get("approved"):
             return ChargeResponse(
                 status=status,
                 reason=approval.get("reason", "Not approved")
@@ -238,11 +242,15 @@ async def charge_customer_workflow(ctx: WorkflowContext, input: ChargeRequest):
 
 # Start workflow
 async def main():
-    handle = await charge_customer_workflow.invoke(ChargeRequest(
-        customer_id="cust_123",
-        amount=5000.00,
-        description="Enterprise annual subscription"
-    ))
+    client = PolosClient()
+
+    handle = await charge_customer_workflow.invoke(
+        client,
+        ChargeRequest(
+            customer_id="cust_123",
+            amount=5000.00,
+            description="Enterprise annual subscription"
+        ))
     
     print(f"Charge workflow started: {handle.id}")
     
@@ -273,7 +281,7 @@ async def main():
     
     # Wait for workflow completion
     result = await handle.result()
-    print(f"\n✅ Charge completed: {result['charge_id']}")
+    print(f"\n✅ Charge completed: {result.charge_id}")
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -337,7 +345,7 @@ async def multi_approval_workflow(ctx: WorkflowContext, input: MultiApprovalInpu
         data={"stage": "manager", "amount": input.amount}
     )
     
-    if not manager_approval.get("approved"):
+    if not manager_approval.data.get("approved"):
         return MultiApprovalOutput(status="rejected_by_manager")
     
     # Stage 2: Finance approval (for large amounts)
@@ -347,7 +355,7 @@ async def multi_approval_workflow(ctx: WorkflowContext, input: MultiApprovalInpu
             data={"stage": "finance", "amount": input.amount}
         )
         
-        if not finance_approval.get("approved"):
+        if not finance_approval.data.get("approved"):
             return MultiApprovalOutput(status="rejected_by_finance")
     
     # Execute action

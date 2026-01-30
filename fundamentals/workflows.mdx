@@ -88,10 +88,10 @@ async def approval_workflow(ctx: WorkflowContext, input: Input):
     decision = await ctx.step.wait_for_event("wait_approval", topic=f"approval/{input.id}")
     
     # Resumes here when event arrives
-    if decision.approved:
+    if decision.data["approved"]:
         await ctx.step.run("execute", execute_action, input.data)
     else:
-        await ctx.step.run("handle_rejection", handle_rejection, decision)
+        await ctx.step.run("handle_rejection", handle_rejection, decision.data)
 ```
 
 # Starting workflows
@@ -107,7 +107,7 @@ result = await research.invoke(ResearchInput(topic="AI agents"))
 **2. Event-triggered**
 
 ```python
-@workflow(trigger_on_event="user.signup")
+@workflow(trigger_on_event="user/signup")
 async def onboard_user(ctx: WorkflowContext, event: UserSignUpEvent):
     # runs when event occurs
 ```

@@ -72,12 +72,12 @@ from polos import queue
 openai_queue = queue("openai-api", concurrency_limit=5)
 
 @workflow(queue=openai_queue)
-async def gpt_summarizer(ctx: WorkflowContext, input: dict):
+async def gpt_summarizer(ctx: WorkflowContext, input: SummarizerInput):
     summary = await ctx.step.run("summarize", call_openai_gpt, input.text)
     return summary
 
 @workflow(queue=openai_queue)
-async def gpt_analyzer(ctx: WorkflowContext, input: dict):
+async def gpt_analyzer(ctx: WorkflowContext, input: AnalyzerInput):
     analysis = await ctx.step.run("analyze", call_openai_gpt, input.data)
     return analysis
 
@@ -139,7 +139,9 @@ async def user_task(ctx: WorkflowContext, input: dict):
     return {"status": "completed"}
 
 # Invoke with concurrency_key
+client = PolosClient()
 await user_task.invoke(
+    client,
     payload={"task": "data"},
     concurrency_key=f"user:{user_id}"  # Separate queue per user
 )
@@ -155,13 +157,13 @@ await user_task.invoke(
 
 ```python
 # User A can have 5 concurrent tasks
-await user_task.invoke(payload={...}, concurrency_key="user:alice")
-await user_task.invoke(payload={...}, concurrency_key="user:alice")
-await user_task.invoke(payload={...}, concurrency_key="user:alice")
+await user_task.invoke(client, payload={...}, concurrency_key="user:alice")
+await user_task.invoke(client, payload={...}, concurrency_key="user:alice")
+await user_task.invoke(client, payload={...}, concurrency_key="user:alice")
 
 # User B also gets 5 concurrent slots (independent from User A)
-await user_task.invoke(payload={...}, concurrency_key="user:bob")
-await user_task.invoke(payload={...}, concurrency_key="user:bob")
+await user_task.invoke(client, payload={...}, concurrency_key="user:bob")
+await user_task.invoke(client, payload={...}, concurrency_key="user:bob")
 ```
 
 ## Serial execution
@@ -194,8 +196,9 @@ async def limited_workflow(ctx: WorkflowContext, input: dict):
     return {"done": True}
 
 # Invoke 5 times
+client = PolosClient()
 for i in range(5):
-    await limited_workflow.invoke({"id": i})
+    await limited_workflow.invoke(client, {"id": i})
 
 # Execution timeline:
 # Time 0: Workflow 1 starts, Workflow 2 starts (limit = 2)
@@ -222,10 +225,12 @@ async def flexible_workflow(ctx: WorkflowContext, input: dict):
     return {"status": "completed"}
 
 # Use default queue
-await flexible_workflow.invoke({"data": "..."})
+client = PolosClient()
+await flexible_workflow.invoke(client, {"data": "..."})
 
 # Override with different queue
 await flexible_workflow.invoke(
+    client,
     {"data": "..."},
     queue="priority-queue"
 )

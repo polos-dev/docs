@@ -19,7 +19,7 @@ Guardrails run synchronously after each LLM call, giving you fine-grained contro
 The simplest guardrails are natural language rules. Polos uses an LLM (the same model used by the agent) to evaluate these rules and returns pass/fail:
 
 ```python
-from polos import Agent
+from polos import Agent, PolosClient
 
 safety_agent = Agent(
     id="safety-agent",
@@ -36,7 +36,8 @@ safety_agent = Agent(
     ]
 )
 
-response = await safety_agent.run("How do I reset my password?")
+client = PolosClient()
+response = await safety_agent.run(client, "How do I reset my password?")
 ```
 
 **How it works:**
@@ -61,7 +62,9 @@ For complex logic or content modification, use function guardrails:
 
 ```python
 import re
-from polos import Agent, guardrail, GuardrailContext, GuardrailResult, WorkflowContext
+from polos import (
+    PolosClient, Agent, guardrail, GuardrailContext, GuardrailResult, WorkflowContext
+)
 
 @guardrail
 def redact_sensitive_data(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
@@ -100,6 +103,7 @@ privacy_agent = Agent(
 )
 
 response = await privacy_agent.run(
+    client,
     "What's my account information? My email is alice@example.com"
 )
 

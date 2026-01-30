@@ -77,7 +77,7 @@ Publish events from workflows or external systems:
 
 ```python
 @workflow
-async def create_user(ctx: WorkflowContext, input: dict):
+async def create_user(ctx: WorkflowContext, input: CreateUserInput):
     # Create user
     user = await ctx.step.run("create", create_user_record, input)
     

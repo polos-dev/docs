@@ -31,7 +31,8 @@ from polos import (
     max_steps,
     MaxStepsConfig,
     executed_tool,
-    ExecutedToolConfig
+    ExecutedToolConfig,
+    PolosClient
 )
 
 research_agent = Agent(
@@ -50,7 +51,9 @@ research_agent = Agent(
     ]
 )
 
+client = PolosClient()
 response = await research_agent.run(
+    client,
     "Research AI agents and write a comprehensive report"
 )
 ```

@@ -10,14 +10,16 @@ Stop workflows to prevent runaway executions and free up resources. Workflows ca
 Set `run_timeout_seconds` to automatically cancel workflows that run too long:
 
 ```python
-from polos import workflow, WorkflowContext
+from polos import workflow, WorkflowContext, PolosClient
 
 @workflow
 async def risky_workflow(ctx: WorkflowContext, input: dict):
     # Potentially long-running workflow
 
 # Invoke with timeout
+client = PolosClient()
 handle = await risky_workflow.invoke(
+    client,
     payload={"data": "..."},
     run_timeout_seconds=1800  # Cancel after 30 minutes
 )
@@ -45,7 +47,9 @@ async def workflow_with_waits(ctx: WorkflowContext, input: dict):
     await ctx.step.run("finalize", finalize_data, input)
 
 # Timeout only counts running time, not waiting time
+client = PolosClient()
 handle = await workflow_with_waits.invoke(
+    client,
     payload={...},
     run_timeout_seconds=60  # 60 seconds of continuous running time
 )
@@ -62,13 +66,15 @@ handle = await workflow_with_waits.invoke(
 Cancel workflows manually using the SDK or API
 
 ```python
-from polos import cancel_execution
+from polos import PolosClient
+
+client = PolosClient()
 
 # Start workflow
-handle = await risky_workflow.invoke({"data": "..."})
+handle = await risky_workflow.invoke(client, {"data": "..."})
 
 # Cancel manually
-cancelled = await cancel_execution(handle.id)
+cancelled = await client.cancel_execution(handle.id)
 
 if cancelled:
     print("Workflow cancelled successfully")
@@ -79,10 +85,10 @@ else:
 **Or via the handle:**
 
 ```python
-handle = await risky_workflow.invoke({"data": "..."})
+handle = await risky_workflow.invoke(client, {"data": "..."})
 
 # Cancel using handle
-cancelled = await handle.cancel()
+cancelled = await handle.cancel(client)
 ```
 
 **Or via API:**

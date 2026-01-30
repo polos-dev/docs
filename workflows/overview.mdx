@@ -13,7 +13,7 @@ A workflow is a Python function decorated with `@workflow`. It can contain steps
 from polos import workflow, WorkflowContext
 
 @workflow
-async def process_order(ctx: WorkflowContext, input: dict):
+async def process_order(ctx: WorkflowContext, input: OrderInput):
     # Step 1: Validate order
     order = await ctx.step.run("validate", validate_order, input)
     
@@ -23,7 +23,7 @@ async def process_order(ctx: WorkflowContext, input: dict):
     # Step 3: Send confirmation
     await ctx.step.run("send_email", send_confirmation, order)
     
-    return {"order_id": order.id, "status": "completed"}
+    return OrderOutput(order_id=order.id, status="completed")
 ```
 
 **What makes workflows special:**
@@ -52,7 +52,7 @@ async def process_order(order):
 
 ```python
 @workflow
-async def process_order(ctx: WorkflowContext, input: dict):
+async def process_order(ctx: WorkflowContext, input: OrderInput):
     order = await ctx.step.run("validate", validate_order, input)   # ✓ Cached
     payment = await ctx.step.run("charge", charge_stripe, order)    # ✓ Cached
     await ctx.step.run("send_email", send_confirmation, order)      # ❌ Crashes
@@ -187,25 +187,31 @@ Workflows can be started in three ways:
 ### 1. Invoke using API or SDK
 
 ```python
+client = PolosClient()
 result = await order_workflow.invoke(
-    payload={"order_id": "123"}
+    client, payload={"order_id": "123"}
+)
 
 ```
 
 You can also invoke multiple workflows or agents in parallel:
 
 ```python
-from polos import batch_invoke, batch_agent_invoke, BatchWorkflowInput
+from polos import (
+    batch_invoke, batch_agent_invoke, BatchWorkflowInput, PolosClient
+)
+
+client = PolosClient()
 
 # Batch invoke multiple workflows
-handles = await batch_invoke([
+handles = await client.batch_invoke([
     BatchWorkflowInput(id="workflow-1", payload={"foo": "bar"}),
     BatchWorkflowInput(id="workflow-2", payload={"baz": 42}),
     BatchWorkflowInput(id="workflow-3", payload={"qux": "test"}),
 ])
 
 # Batch invoke multiple agents
-agent_handles = await batch_agent_invoke([
+agent_handles = await client.batch_agent_invoke([
     grammar_agent.with_input("Check this text"),
     tone_agent.with_input("Check this text"),
     accuracy_agent.with_input("Check this text"),
@@ -218,7 +224,7 @@ agent_handles = await batch_agent_invoke([
 
 ```python
 @workflow(schedule="0 9 * * *")  # Daily at 9am
-async def daily_report(ctx: WorkflowContext, input: dict):
+async def daily_report(ctx: WorkflowContext, input: SchedulePayload):
     data = await ctx.step.run("fetch", fetch_data)
     report = await ctx.step.run("generate", generate_report, data)
     await ctx.step.run("send", send_email, report)
@@ -228,7 +234,7 @@ async def daily_report(ctx: WorkflowContext, input: dict):
 
 ```python
 @workflow(trigger_on_event="user.signup")
-async def onboard_user(ctx: WorkflowContext, event: dict):
+async def onboard_user(ctx: WorkflowContext, event: EventPayload):
     user_id = event.data["user_id"]
     await ctx.step.run("welcome", send_welcome_email, user_id)
     await ctx.step.run("setup", create_sample_data, user_id)

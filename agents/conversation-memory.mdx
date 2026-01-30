@@ -31,7 +31,9 @@ Group related messages using `conversation_id`.
 Works with `agent.run()`:
 
 ```python
+client = PolosClient()
 result = await research_agent.run(
+    client,
     user_message,
     conversation_id=conversation_id
 )
@@ -40,6 +42,7 @@ result = await research_agent.run(
 and `agent.stream()`:
 ```python
 stream = await research_agent.stream(
+    client,
     user_message,
     conversation_id=conversation_id
 )
@@ -56,12 +59,15 @@ stream = await research_agent.stream(
 
 ```python
 import asyncio
+from polos import PolosClient
 
 async def main():
     conversation_id = "user-123-session-1"
-    
+    client = PolosClient()
+
     # Turn 1
     response1 = await my_agent.run(
+        client,
         "My name is Alice and I love Python.",
         conversation_id=conversation_id
     )
@@ -69,6 +75,7 @@ async def main():
     
     # Turn 2 - Agent remembers Alice and Python
     response2 = await my_agent.run(
+        client,
         "What's my favorite programming language?",
         conversation_id=conversation_id
     )
@@ -76,6 +83,7 @@ async def main():
     
     # Turn 3 - Agent remembers the name
     response3 = await my_agent.run(
+        client,
         "What's my name?",
         conversation_id=conversation_id
     )

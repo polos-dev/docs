@@ -62,7 +62,7 @@ async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutpu
 Add tools to an agent's `tools` parameter:
 
 ```python
-from polos import Agent
+from polos import Agent, PolosClient
 
 weather_agent = Agent(
     id="weather-agent",
@@ -72,7 +72,8 @@ weather_agent = Agent(
     tools=[get_weather]
 )
 
-response = await weather_agent.run("What's the weather in Tokyo?")
+client = PolosClient()
+response = await weather_agent.run(client, "What's the weather in Tokyo?")
 ```
 
 **What happens:**
@@ -187,7 +188,9 @@ assistant = Agent(
     tools=[search_web, send_email]
 )
 
+client = PolosClient()
 response = await assistant.run(
+    client,
     "Search for Python tutorials and email the top 3 results to alice@example.com"
 )
 ```

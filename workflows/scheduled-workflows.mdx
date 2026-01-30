@@ -72,11 +72,12 @@ async def user_reminder(ctx: WorkflowContext, payload: SchedulePayload):
 
 ```python
 import asyncio
-from polos import schedules
+from polos import schedules, PolosClient
 
-async def schedule_user_reminders():    
+async def schedule_user_reminders(client):
     # Schedule per-user reminder
     schedule_id = await schedules.create(
+        client,
         workflow="user-reminder",
         cron="0 8 * * *",  # 8:00 AM daily
         timezone="America/Los_Angeles",
@@ -85,7 +86,8 @@ async def schedule_user_reminders():
     
     print(f"Created schedule: {schedule_id}")
 
-asyncio.run(schedule_user_reminders())
+client = PolosClient()
+asyncio.run(schedule_user_reminders(client))
 ```
 
 ## Schedule payload
@@ -175,11 +177,12 @@ schedule="* * * * *"    # Every minute
 Use the `key` parameter to create separate schedules for each user or entity:
 
 ```python
-from polos import schedules
+from polos import schedules, PolosClient
 
-async def setup_user_schedule(user_id: str, preferences: dict):
+async def setup_user_schedule(client, user_id: str, preferences: dict):
     # Create/update per-user schedule
     schedule_id = await schedules.create(
+        client,
         workflow="daily-digest",
         cron="0 8 * * *",  # 8 AM
         timezone=preferences["timezone"],
@@ -188,9 +191,11 @@ async def setup_user_schedule(user_id: str, preferences: dict):
     
     return schedule_id
 
+client = PolosClient()
+
 # Each user gets their own schedule
-await setup_user_schedule("user_123", {"timezone": "America/New_York"})
-await setup_user_schedule("user_456", {"timezone": "Europe/London"})
+await setup_user_schedule(client, "user_123", {"timezone": "America/New_York"})
+await setup_user_schedule(client, "user_456", {"timezone": "Europe/London"})
 ```
 
 **In the workflow:**
@@ -245,10 +250,13 @@ async def morning_report(ctx: WorkflowContext, payload: SchedulePayload):
 ### Create or update a schedule
 
 ```python
-from polos import schedules
+from polos import schedules, PolosClient
+
+client = PolosClient()
 
 # Global schedule (one per workflow)
 schedule_id = await schedules.create(
+    client,
     workflow="cleanup-task",
     cron="0 3 * * *",  # 3 AM daily
     timezone="UTC",
@@ -257,6 +265,7 @@ schedule_id = await schedules.create(
 
 # Per-user schedule
 schedule_id = await schedules.create(
+    client,
     workflow="user-notification",
     cron="0 12 * * *",  # Noon daily
     timezone="America/Chicago",
@@ -269,6 +278,7 @@ schedule_id = await schedules.create(
 ```python
 # Calling create() with the same workflow and key updates it
 schedule_id = await schedules.create(
+    client,
     workflow="user-notification",
     cron="0 15 * * *",  # Change to 3 PM
     timezone="America/Chicago",

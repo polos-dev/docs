@@ -46,9 +46,12 @@ The `result` field contains a fully validated Pydantic model instance:
 
 ```python
 import asyncio
+from polos import PoloClient
 
 async def main():
+    client = PolosClient()
     response = await person_extractor.run(
+        client,
         "Hi, I'm Alice Johnson, 28 years old, living in San Francisco. Email: alice@example.com"
     )
     
@@ -84,7 +87,9 @@ When streaming, the output is JSON that you can parse into your Pydantic model:
 
 ```python
 async def main():
+    client = PolosClient()
     stream = await person_extractor.stream(
+        client,
         "My name is Bob Smith, I'm 35, and I live in Austin, Texas."
     )
     
@@ -123,7 +128,7 @@ Structured outputs support nested models, lists, and enums:
 ```python
 from typing import List
 from pydantic import BaseModel, Field
-from polos import Agent
+from polos import Agent, PolosClient
 
 class Address(BaseModel):
     street: str = Field(description="Street address", default="")
@@ -150,13 +155,17 @@ contact_extractor = Agent(
     output_schema=Contact
 )
 
-response = await contact_extractor.run("""
-John Doe
-Email: john@example.com
-Mobile: +1-555-0123
-Work: +1-555-0199
-Address: 123 Main St, New York, NY 10001
-""")
+client = PolosClient()
+response = await contact_extractor.run(
+    client,
+    """
+    John Doe
+    Email: john@example.com
+    Mobile: +1-555-0123
+    Work: +1-555-0199
+    Address: 123 Main St, New York, NY 10001
+    """
+)
 
 contact = response.result
 print(f"Name: {contact.name}")

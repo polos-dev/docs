@@ -73,9 +73,12 @@ Use `agent.run()` for complete execution:
 
 ```python
 import asyncio
+from polos import PolosClient
 
 async def main():
+    client = PolosClient()
     response = await weather_agent.run(
+        client,
         "What's the weather like in New York and London? Compare them."
     )
     
@@ -106,6 +109,7 @@ You can pass any keyword argument supported by your provider:
 ```python
 # Anthropic extended thinking
 response = await anthropic_agent.run(
+    client,
     "What's the weather in New York? How did it impact my day?",
     thinking={
         "type": "enabled",
@@ -115,12 +119,14 @@ response = await anthropic_agent.run(
 
 # OpenAI reasoning
 response = await openai_agent.run(
+    client,
     "Analyze the weather patterns",
     reasoning_effort="high"  # OpenAI o1 models
 )
 
 # Temperature and other common parameters
 response = await weather_agent.run(
+    client,
     "What's the weather?",
     temperature=0.7,
     max_tokens=1000,
@@ -136,8 +142,9 @@ Stream responses for real-time feedback:
 
 ```python
 async def main():
+    client = PolosClient()
     stream = await weather_agent.stream(
-        "What's the weather in Tokyo?"
+        client, "What's the weather in Tokyo?"
     )
     
     # Stream text chunks as they arrive
@@ -160,6 +167,7 @@ You can also pass provider-specific parameters to `agent.stream()`:
 
 ```python
 stream = await weather_agent.stream(
+    client,
     "Compare weather across multiple cities",
     temperature=0.8,
     max_tokens=2000
@@ -204,7 +212,7 @@ Agents in Polos are durable - they survive failures and resume from the last com
 
 ```python
 # Agent execution starts
-response = await weather_agent.run("Compare weather in 5 cities")
+response = await weather_agent.run(client, "Compare weather in 5 cities")
 
 # Agent calls get_weather("New York") ✓ - cached
 # Agent calls get_weather("London") ✓ - cached

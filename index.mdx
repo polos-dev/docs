@@ -7,39 +7,142 @@ description: "Durable execution platform for AI agents"
 
 Polos is a **durable execution platform** for AI agents. It provides the stateful infrastructure required to run long-running, autonomous agents reliably at scale.
 
-Write your logic in plain Python (or TypeScript - coming soon). Polos ensures it survives crashes, handles failures, and scales automatically.
+Write agents and workflows in plain Python (or TypeScript - coming soon) with standard programming constructs. No DAGs to define, no graph syntax to learn - just write Python. Use loops, conditionals, and function calls naturally while Polos handles durability, failure recovery, and scaling automatically.
+
+```python
+from polos import Agent, workflow, WorkflowContext
+
+order_validation_agent = Agent(
+    provider="openai", 
+    model="gpt-4o",
+    tools=[check_inventory, calculate_shipping]
+)
+
+@workflow
+async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
+    # Agent validates order and checks inventory
+    validation = await ctx.step.agent_invoke_and_wait(
+        "validate_order",
+        order_validation_agent.with_input(f"Validate this order: {order}")
+    )
+    
+    if not validation.result.valid:
+        return ProcessOrderOutput(
+            status="invalid",
+            reason=validation.result.reason
+        )
+    
+    # High-value orders need approval
+    if order.amount > 1000:
+        # Suspend execution until the order is approved or rejected
+        decision = await ctx.step.suspend(
+            "approval",
+            data={
+                "id": order.id,
+                "amount": order.amount,
+                "items": order.items,
+                "user", order.user
+            }
+        )
+        if not decision.data["approved"]:
+            return ProcessOrderOutput(
+                status="rejected",
+                reason=decision.data.get("reason")
+            )
+    
+    # Charge customer (exactly-once guarantee)
+    payment = await ctx.step.run("charge", charge_stripe, order)
+    
+    # Wait for warehouse pickup (could be hours or days)
+    await ctx.step.wait_for_event(
+        "wait_pickup",
+        topic=f"warehouse.pickup/{order.id}"
+    )
+    
+    # Send shipping notification
+    await ctx.step.run("notify", send_shipping_email, order)
+    
+    return ProcessOrderOutput(status="completed", payment_id=payment.id)
+```
+
+This workflow survives crashes, resumes mid-execution, and pauses for approval - all with zero manual checkpointing, retry logic or queue management.
+
+## The Problem
+
+Most AI agents work in demos but break in production. They're long-running distributed systems, yet we run them on infrastructure built for stateless APIs.
+
+What breaks:
+
+- Server restarts lose all progress
+- Failed API calls restart from scratch, wasting tokens
+- Difficult to pause for human approval
+- Multi-agent systems can't share context reliably
+- One workflow can exhaust your entire OpenAI quota
+
+
+## Write Code, Not Configs
+
+**With Polos:**
+
+
+```python
+@workflow
+async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
+    # Just write Python
+    if order.amount > 1000:
+        approved = await ctx.step.suspend("approval", data=order.model_dump())
+        if not approved.data["ok"]:
+            return {"status": "rejected"}
+    
+    await ctx.step.run("charge", charge_stripe, order)
+    await ctx.step.run("notify", send_email, order)
+```
+
+**Other platforms:**
+
+```python
+# Define rigid DAGs upfront
+dag = DAG(
+    nodes=[
+        Node("check_amount", CheckAmount),
+        Node("approval", HumanApproval),
+        Node("charge", ChargeStripe),
+        Node("notify", SendEmail),
+    ],
+    edges=[
+        ("check_amount", "approval", condition="amount > 1000"),
+        ("check_amount", "charge", condition="amount <= 1000"),
+        ("approval", "charge", condition="approved"),
+        ("charge", "notify"),
+    ]
+)
+```
+
+With Polos, there are no DAGs to define, no graph syntax to learn. Use loops, conditionals, and function calls naturally while Polos handles durability automatically.
 
 ## Why Polos?
 
-Most AI agents work in demo but break in production. Agents are long-running distributed systems - yet we run them on infrastructure built for stateless APIs.
+🧠 **Durable State**: Your agent survives crashes with call stack and local variables intact. Step 18 of 20 fails? Resume from step 18. No wasted LLM calls, no manual checkpointing or state-machine hacks required.
 
-Polos gives you everything you need to build production-grade AI agents out of the box:
+**🚦 Global Concurrency**: System-wide rate limiting with queues and concurrency keys. Prevent one rogue agent from exhausting your entire OpenAI quota. Only active executions count toward limits - queued runs wait their turn without consuming resources.
 
-- **Durable execution**: Your agent survives server restarts and resumes exactly where it stopped, call stack and local variables intact. If a 20-step workflow crashes at step 18, Polos resumes from step 18 - no re-running the first 17 LLM calls, no wasted tokens. No manual checkpointing or retry logic needed.
+**🤝 Human-in-the-Loop**: Native support for pausing execution. Wait hours or days for user approval and resume with full context. In serverless environments, paused agents consume zero compute - you only pay when they're actively running.
 
-- **Workflows**: Write workflows as plain async code. Call one function from another, handle errors with try/catch, use loops and conditionals - just regular code. Polos automatically makes it durable so your code survives crashes and resumes mid-execution.
+**📡 Agent Handoffs**: Transactional memory for multi-agent systems. Pass reasoning history between specialized agents without context drift. Shared working memory enables true agent collaboration.
 
-- **Global concurrency control**: Control how many agents run simultaneously using queues with configurable concurrency limits. Prevent one workflow from exhausting your OpenAI quota or overloading external APIs. Only active executions count toward limits - queued runs wait their turn without consuming resources.
+**🔍 Decision-Level Observability**: Trace the reasoning behind every tool call, not just raw logs. See why your agent chose Tool B over Tool A. Debug deterministic failures in stochastic systems.
 
-- **Human-in-the-loop**: Pause an agent mid-execution to await user approval, then resume hours or days later with full state intact. In serverless environments, paused agents consume zero compute - you only pay when they're actively running. Perfect for approval workflows, financial transactions, or any operation requiring human oversight.
+**⚡ Production Ready**: Automatic retries, exactly-once execution guarantees, OpenTelemetry tracing built-in. Scales to millions of concurrent workflows.
 
-- **Persistent memory**: Give your agents persistent context that survives across steps, servers, and execution lifetimes. Agents maintain conversation history, and  context automatically.
+## What You Can Build?
 
-- **Agent coordination**: When building multi-agent systems, seamlessly hand off context and reasoning history between specialized agents. Shared working memory prevents state drift and enables true agent collaboration.
+🔬 **Research assistants**: Multi-hour workflows that search, analyze, and synthesize information across dozens of sources
 
-- **Decision-level observability**: Trace the reasoning and intent behind every tool call, not just raw logs. Built-in observability shows you why your agent chose Tool B over Tool A, making debugging deterministic failures in stochastic systems actually possible.
+💰 **Financial operations**: Approval workflows that pause for human review, then execute Stripe charges with exactly-once guarantees
 
-## What can you build?
+🤖 **Multi-agent systems**: Specialized agents (researcher, writer, editor) that coordinate via shared memory to complete complex tasks
 
-If your agent runs for more than 30 seconds, it needs durable execution. Polos is designed for:
-
-- **Long-running workflows** – Research bots or coding assistants that operate over minutes or hours
-
-- **Human-in-the-loop** – Agents that pause execution for human approval and resume hours later with full state
-
-- **Multi-agent systems** – Multi-agent systems that share working memory to coordinate complex tasks
-
-- **Mission-critical automation** – Workflows that perform side effects (Stripe charges, DB writes) and require strict "exactly-once" semantics
+⚙️ **Background automation**: Long-running jobs that survive deploys and resume seamlessly (data migrations, batch processing, ETL pipelines)
 
 ## Next Steps
 

@@ -60,7 +60,7 @@ async def process_order(ctx: WorkflowContext, input: OrderInput):
         validate_order,
         input.order_id
     )
-    
+
     # Run sync function (automatically wrapped)
     receipt = await ctx.step.run(
         "generate_receipt",
@@ -112,7 +112,7 @@ async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
         {"data": input.data}
     )
     
-    # Continue immediately (don't wait)
+    # Continue immediately (don't wait for child to complete)
     print(f"Started workflow: {handle.id}")
     return {"child_id": handle.id}
 ```
@@ -148,8 +148,7 @@ from polos import BatchWorkflowInput
 async def parallel_tasks(ctx: WorkflowContext, input: ParallelInput):
     # Start multiple workflows
     handles = await ctx.step.batch_invoke(
-        "start_batch",
-        [
+        "start_batch", [
             BatchWorkflowInput(id="task_workflow", payload={"task": "A"}),
             BatchWorkflowInput(id="task_workflow", payload={"task": "B"}),
             BatchWorkflowInput(id="log_workflow", payload={"input": input})
@@ -168,8 +167,7 @@ Start multiple workflows in parallel and wait for all to complete:
 async def parallel_and_wait(ctx: WorkflowContext, input: ParallelInput):
     # Start batch and wait for all
     results = await ctx.step.batch_invoke_and_wait(
-        "batch_process",
-        [
+        "batch_process", [
             BatchWorkflowInput(id="processor", payload={"item": "A"}),
             BatchWorkflowInput(id="processor", payload={"item": "B"}),
             BatchWorkflowInput(id="log_workflow", payload={"input": input})
@@ -332,7 +330,7 @@ async def manual_approval(ctx: WorkflowContext, input: dict):
     action = await ctx.step.run("prepare", prepare_action, input)
     
     # Suspend with context data
-    approval_data = await ctx.step.suspend(
+    approval = await ctx.step.suspend(
         "approval",
         data={
             "action": action.description,
@@ -342,7 +340,7 @@ async def manual_approval(ctx: WorkflowContext, input: dict):
     )
     
     # Resume with approval decision
-    if approval_data["approved"]:
+    if approval.data["approved"]:
         await ctx.step.run("execute", execute_action, action)
 ```
 

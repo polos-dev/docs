@@ -107,9 +107,11 @@ Lifecycle events are useful for streaming progress updates to UI. You can send e
 frontend via Websocket:
 
 ```python
+from polos import events, PolosClient
+
 async def stream_to_websocket(client: PolosClient, execution_id: str, websocket):
     """Stream workflow events to WebSocket client."""
-    async for event in stream_workflow(client, workflow_run_id=execution_id):
+    async for event in events.stream_workflow(client, workflow_run_id=execution_id):
         # Send event to frontend
         await websocket.send_json({
             "type": event.event_type,
