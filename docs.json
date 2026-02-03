@@ -20,7 +20,7 @@
             ]
           },
           {
-            "group": "Quickstart",
+            "group": "Getting Started",
             "pages": [
               "quickstart"
             ]
@@ -79,6 +79,7 @@
           {
             "group": "Community",
             "pages": [
+              "community/github",
               "community/discord"
             ]
           }

@@ -1,6 +1,70 @@
 ---
 title: "Tracing"
-description: "Tracing in Polos"
+icon: "magnifying-glass-chart"
 ---
 
-Tracing provides visibility into workflow execution. This page is coming soon.
+Polos provides built-in tracing for every agent and workflow execution. Every LLM call, tool invocation, and state transition is automatically captured - no additional instrumentation required.
+
+## Viewing traces
+
+Open the Polos dashboard at [http://localhost:5173](http://localhost:5173) to view execution traces. Each agent or workflow run is recorded with full detail.
+
+### Timeline view
+
+The timeline view shows every step of your agent's execution in chronological order, including LLM calls, tool invocations, and their inputs/outputs:
+
+<img src="/images/weather-agent-trace.png" alt="Polos dashboard showing agent execution trace" />
+
+### Graph view
+
+The graph view visualizes the execution flow, making it easy to see how steps relate to each other and understand the structure of complex workflows:
+
+<img src="/images/weather-agent-graph.png" alt="Polos dashboard showing agent graph" />
+
+## Understanding spans
+
+Polos organizes traces into **spans** that represent units of active execution. A key concept is that spans end when an agent or workflow enters a waiting state - this reflects how Polos manages resources efficiently.
+
+### Example: Weather agent execution
+
+Consider a weather agent that:
+1. Starts execution
+2. Calls the LLM
+3. LLM decides to call the `get_weather` tool
+4. Agent enters waiting state while tool executes
+5. Resumes after tool completes
+6. Calls LLM again with the tool result
+7. Returns final response
+
+This execution produces **two spans**:
+
+**Span 1: Initial execution**
+- Agent starts
+- Calls LLM
+- LLM requests tool call
+- Agent enters waiting state (span ends)
+
+**Span 2: Resumed execution**
+- Agent resumes after tool completes
+- Calls LLM with tool result
+- Agent returns final response (span ends)
+
+This span structure reflects how Polos handles durability. When an agent enters a waiting state, it releases compute resources. The agent's state is persisted, and when the wait condition is satisfied, a new span begins to continue execution. If a crash occurs between spans, the agent resumes from exactly where it left off.
+
+<img src="/images/tracing-spans.png" alt="Spans during agent execution" />
+
+## What gets traced
+
+Polos automatically captures:
+
+- **LLM calls**: Model, prompt, response, token usage, latency
+- **Tool invocations**: Tool name, inputs, outputs, duration
+- **State transitions**: When agents pause, resume, or complete
+- **Workflow steps**: Each step in a workflow with its result
+- **Errors**: Full error details and stack traces when failures occur
+
+## OpenTelemetry integration
+
+Polos traces are compatible with OpenTelemetry. You can export traces to your preferred observability backend (Jaeger, Datadog, Honeycomb, etc.) for integration with your existing monitoring stack.
+
+More documentation on OpenTelemetry export configuration coming soon.

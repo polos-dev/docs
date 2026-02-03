@@ -1,6 +1,105 @@
 ---
-title: "Adding custom traces"
-description: "Adding custom traces in Polos"
+title: "Custom Traces"
+icon: "pen-to-square"
 ---
 
-Adding custom traces for enhanced observability. This page is coming soon.
+While Polos automatically traces LLM calls, tool invocations, and workflow steps, you can add custom spans to capture additional context specific to your application.
+
+## Creating a custom span
+
+Use `ctx.step.trace()` as a context manager to create a custom span:
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow
+async def my_workflow(ctx: WorkflowContext, input: MyInput):
+    # Custom span for a database query
+    with ctx.step.trace("database_query", {"table": "users"}) as span:
+        # Your code here
+        result = await ctx.step.run("query_database", query_database, "SELECT * FROM users")
+
+        # Add attributes to the span
+        span.set_attribute("row_count", len(result))
+
+    return result
+```
+
+The first argument is the span name, and the second (optional) argument is a dictionary of initial attributes.
+
+## Setting attributes
+
+You can add metadata to spans using attributes:
+
+```python
+with ctx.step.trace("external_api_call") as span:
+    response = await ctx.step.run("external_api", call_external_api, url)
+
+    # Set a single attribute
+    span.set_attribute("status_code", response.status_code)
+    span.set_attribute("success", response.ok)
+
+    # Set multiple attributes at once
+    span.set_attributes({
+        "url": url,
+        "response_size": len(response.content),
+        "content_type": response.headers.get("content-type"),
+    })
+```
+
+## Adding events
+
+Events mark specific moments within a span:
+
+```python
+with ctx.step.trace("data_processing") as span:
+    span.add_event("started_validation")
+
+    await ctx.step.run("validate_data", validate_data, data)
+
+    span.add_event("validation_complete", attributes={
+        "records_validated": len(data),
+        "errors_found": 0,
+    })
+
+    process_data(data)
+
+    span.add_event("processing_complete")
+```
+
+## Nested spans
+
+Spans can be nested to show hierarchical relationships:
+
+```python
+@workflow
+async def my_workflow(ctx: WorkflowContext, input: MyInput):
+    with ctx.step.trace("parent_operation") as parent_span:
+        # Do some work
+        await ctx.step.run("step_one", step_one_func)
+
+        # Nested span within the parent
+        with ctx.step.trace("child_operation") as child_span:
+            child_span.set_attribute("nested", True)
+            await ctx.step.run("do_child_work", do_child_work)
+
+        await ctx.step.run("step_two", step_two_func)
+```
+
+You can also create spans within step functions:
+
+```python
+async def process_data(ctx: WorkflowContext, data: dict):
+    with ctx.step.trace("data_transformation", {"input_size": len(data)}) as span:
+        transformed = transform(data)
+
+        span.set_attributes({
+            "output_size": len(transformed),
+            "success": True,
+        })
+        span.add_event("transformation_complete")
+
+        return transformed
+```
+
+These custom spans appear alongside automatic traces in the Polos dashboard, giving you complete visibility into your workflow execution.
