@@ -113,15 +113,16 @@
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:support@polos.dev"
+        "label": "GitHub",
+        "icon": "github",
+        "href": "https://github.com/polos-dev/polos"
+      },
+      {
+        "label": "Discord",
+        "icon": "discord",
+        "href": "https://discord.gg/ZAxHKMPwFG"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://cloud.polos.dev"
-    }
+    ]
   },
   "contextual": {
     "options": [

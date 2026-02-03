@@ -5,9 +5,13 @@ description: "Durable execution platform for AI agents"
 
 # Introduction
 
-Polos is a **durable execution platform** for AI agents. It provides the stateful infrastructure required to run long-running, autonomous agents reliably at scale.
+Polos is a **durable execution platform** for AI agents.
+It provides the stateful infrastructure required to run long-running, autonomous agents reliably at scale -
+including a built-in event system for agent coordination, so you don't need to bolt on Kafka or RabbitMQ.
 
-Write agents and workflows in plain Python (or TypeScript - coming soon) with standard programming constructs. No DAGs to define, no graph syntax to learn - just write Python. Use loops, conditionals, and function calls naturally while Polos handles durability, failure recovery, and scaling automatically.
+Write it all in plain Python (or TypeScript - coming soon).
+No DAGs to define, no graph syntax to learn. Use loops, conditionals, and function calls
+naturally while Polos handles durability, reliability and scaling automatically.
 
 ```python
 from polos import Agent, workflow, WorkflowContext
@@ -18,7 +22,7 @@ order_validation_agent = Agent(
     tools=[check_inventory, calculate_shipping]
 )
 
-@workflow
+@workflow(trigger_on_event="order/new")
 async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
     # Agent validates order and checks inventory
     validation = await ctx.step.agent_invoke_and_wait(
@@ -41,7 +45,7 @@ async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
                 "id": order.id,
                 "amount": order.amount,
                 "items": order.items,
-                "user", order.user
+                "user": order.user
             }
         )
         if not decision.data["approved"]:
@@ -80,7 +84,7 @@ What breaks:
 - One workflow can exhaust your entire OpenAI quota
 
 
-## Write Code, Not Configs
+## Logic Belongs in Code, Not Configs
 
 **With Polos:**
 
@@ -134,7 +138,7 @@ With Polos, there are no DAGs to define, no graph syntax to learn. Use loops, co
 
 **⚡ Production Ready**: Automatic retries, exactly-once execution guarantees, OpenTelemetry tracing built-in. Scales to millions of concurrent workflows.
 
-## What You Can Build?
+## What Can You Build?
 
 🔬 **Research assistants**: Multi-hour workflows that search, analyze, and synthesize information across dozens of sources
 
@@ -143,6 +147,13 @@ With Polos, there are no DAGs to define, no graph syntax to learn. Use loops, co
 🤖 **Multi-agent systems**: Specialized agents (researcher, writer, editor) that coordinate via shared memory to complete complex tasks
 
 ⚙️ **Background automation**: Long-running jobs that survive deploys and resume seamlessly (data migrations, batch processing, ETL pipelines)
+
+## How It Works
+
+Polos captures the result of every side effect - tool calls, API responses, time delays as a durable log.
+If your process dies, Polos replays the workflow from the log, returning previously-recorded results instead of re-executing them.
+Your agent's exact local variables and call stack are restored in milliseconds.
+Completed steps are never re-executed - so you're never paying for the same LLM call twice.
 
 ## Next Steps
 

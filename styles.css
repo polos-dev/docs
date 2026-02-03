@@ -1,8 +1,10 @@
 /* Custom styles for Mintlify documentation - Logo sizing only */
 
-/* Target logo specifically without affecting other elements */
-a[href="/"] > img,
-a[href="/"] > svg {
+/* Target logo in navbar specifically without affecting navigation chevrons */
+nav a[href="/"] > img,
+nav a[href="/"] > svg,
+header a[href="/"] > img,
+header a[href="/"] > svg {
   width: 100px !important;
   height: auto !important;
   max-width: 200px !important;

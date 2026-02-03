@@ -1,86 +1,289 @@
 ---
 title: "Quickstart"
-description: "Get started with Polos in minutes"
+description: "Build and run your first durable agent"
 ---
 
-## Get started with Polos
+## Prerequisites
 
-Build your first durable agent in three simple steps.
+- Python 3.10 or higher
+- Postgres database
+- An [OpenAI API key](https://platform.openai.com/api-keys)
 
-### Step 1: Start the Polos orchestrator
+## Install Polos
 
-<AccordionGroup>
-  <Accordion icon="rectangle-terminal" title="Install Polos">
-    Install the Polos CLI and start the orchestrator:
-    
-    ```bash
-    pip install polos
-    polos start
-    ```
-    
-    <Tip>The orchestrator manages workflow execution and state persistence.</Tip>
-  </Accordion>
-</AccordionGroup>
+Run the install script to download the Polos server and CLI:
 
-### Step 2: Write your first agent
+```bash
+curl -fsSL https://install.polos.dev/install.sh | bash
+```
 
-<AccordionGroup>
-  <Accordion icon="code" title="Create an agent">
-    Create a simple agent that performs a task:
-    
-    ```python
-    from polos import Agent
-    
-    agent = Agent(
-        name="my-first-agent",
-        instructions="You are a helpful assistant"
+Add the Polos bin directory to your PATH (if not already added):
+
+```bash
+export PATH="$HOME/.polos/bin:$PATH"
+```
+
+<Tip>Add this line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) to make it permanent.</Tip>
+
+## Start the Polos server
+
+Start the orchestrator and UI:
+
+```bash
+polos-server start
+```
+
+You should see output like:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📡 Orchestrator API: http://127.0.0.1:8080
+🌐 UI:               http://127.0.0.1:5173
+🔑 Project ID:       046a270d-c253-4914-9d2c-86b8484807ae
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Copy the **Project ID** - you'll need it in the next step.
+
+<Accordion title="Customize ports">
+By default, Polos uses port 8080 for the orchestrator and 5173 for the UI. To use different ports:
+
+```bash
+export POLOS_ORCHESTRATOR_PORT=9000
+export POLOS_UI_PORT=3000
+polos-server start
+```
+
+If Polos has already been initialized, update `~/.polos/config.toml` with the new ports before starting.
+</Accordion>
+
+## Clone the example
+
+Clone the weather agent example:
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/01-weather-agent
+```
+
+Or view the [source on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-weather-agent).
+
+## Set up your environment
+
+Create a `.env` file from the example:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and fill in your values:
+
+```bash
+# Required
+POLOS_LOCAL_MODE=true
+POLOS_PROJECT_ID=your-project-id   # The Project ID from `polos-server start`
+OPENAI_API_KEY=sk-...              # Your OpenAI API key
+```
+
+Install Python dependencies:
+
+```bash
+pip install polos-sdk[openai] python-dotenv
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+```
+
+## Understand the code
+
+The example has three main files:
+
+<CodeGroup>
+
+```python agents.py
+from polos import Agent, max_steps, MaxStepsConfig
+from tools import get_weather
+
+# Define an agent with a tool
+weather_agent = Agent(
+    id="weather_agent",
+    provider="openai",
+    model="gpt-4o-mini",
+    system_prompt="You are a helpful weather assistant. Use the get_weather tool to look up weather information when asked.",
+    tools=[get_weather],
+    stop_conditions=[
+        max_steps(MaxStepsConfig(limit=10)),
+    ],
+)
+```
+
+```python tools.py
+from pydantic import BaseModel
+from polos import tool, WorkflowContext
+
+class WeatherInput(BaseModel):
+    city: str
+
+class WeatherOutput(BaseModel):
+    city: str
+    temperature: int
+    condition: str
+    humidity: int
+    wind_speed: int
+    unit: str
+    error: str | None = None
+
+@tool(description="Get the current weather information for a given city")
+async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutput:
+    # In production, this would call a real weather API
+    weather_data = {
+        "new york": {"city": "New York", "temperature": 72, "condition": "Partly Cloudy", "humidity": 65, "wind_speed": 10, "unit": "F"},
+        "london": {"city": "London", "temperature": 15, "condition": "Rainy", "humidity": 85, "wind_speed": 12, "unit": "C"},
+    }
+
+    city = input.city.strip().lower()
+    weather = weather_data.get(city)
+
+    if not weather:
+        return WeatherOutput(city=city.title(), temperature=0, condition="Unknown", humidity=0, wind_speed=0, unit="C", error=f"Weather data not available for '{city}'.")
+
+    return WeatherOutput(**weather)
+```
+
+```python worker.py
+import asyncio
+import os
+from dotenv import load_dotenv
+from polos import PolosClient, Worker
+from tools import get_weather
+from agents import weather_agent
+
+load_dotenv()
+
+async def main():
+    project_id = os.getenv("POLOS_PROJECT_ID")
+
+    client = PolosClient(
+        project_id=project_id,
+        api_url=os.getenv("POLOS_API_URL", "http://localhost:8080"),
     )
-    
-    result = agent.run("What is the weather today?")
-    ```
-    
-    <Tip>Agents automatically handle retries and state persistence.</Tip>
-  </Accordion>
-</AccordionGroup>
 
-### Step 3: Start a worker
+    # Register agents and tools with the worker
+    worker = Worker(
+        client=client,
+        deployment_id="python-examples",
+        agents=[weather_agent],
+        tools=[get_weather],
+    )
 
-<AccordionGroup>
-  <Accordion icon="rocket" title="Run a worker">
-    Start a worker to execute your agent:
-    
-    ```bash
-    polos worker start
-    ```
-    
-    Your agent will now execute with full durability guarantees.
-  </Accordion>
-</AccordionGroup>
+    print("Starting worker...")
+    await worker.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+```python main.py
+import asyncio
+import os
+from dotenv import load_dotenv
+from polos import PolosClient
+from agents import weather_agent
+
+load_dotenv()
+
+async def main():
+    project_id = os.getenv("POLOS_PROJECT_ID")
+
+    client = PolosClient(
+        project_id=project_id,
+        api_url=os.getenv("POLOS_API_URL", "http://localhost:8080"),
+    )
+
+    print("Invoking weather_agent...")
+    result = await weather_agent.run(client, "What's the weather like in New York?")
+    print(result.result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Run the agent
+
+**Terminal 1** - Start the worker:
+
+```bash
+python worker.py
+```
+
+The worker is an API server that registers your agents and tools with the orchestrator. When an agent is invoked, the orchestrator calls back to this API to execute it.
+
+You should see:
+
+```
+Starting worker...
+  Project ID: 046a270d-c253-4914-9d2c-86b8484807ae
+  Agents: ['weather_agent']
+  Press Ctrl+C to stop
+```
+
+**Terminal 2** - Invoke the agent:
+
+```bash
+python main.py
+```
+
+The agent will use the `get_weather` tool to look up the weather and respond:
+
+```
+Invoking weather_agent...
+The weather in New York is currently 72°F and Partly Cloudy with 65% humidity and 10 mph winds.
+```
+
+## View in the UI
+
+Open [http://localhost:5173](http://localhost:5173) to see your agent execution in the Polos dashboard. You can trace every step, see tool calls, and inspect the agent's reasoning.
+
+The execution trace shows every step of your agent's run, including LLM calls, tool invocations, and their inputs/outputs:
+
+<img src="/images/weather-agent-trace.png" alt="Polos dashboard showing agent execution trace" />
+
+The graph view visualizes the execution flow, making it easy to see how steps relate to each other:
+
+<img src="/images/weather-agent-graph.png" alt="Polos dashboard showing agent graph" />
+
+## What just happened?
+
+1. The **worker** started an API server and registered the `weather_agent` with the orchestrator
+2. When you ran `main.py`, it submitted a task to the orchestrator
+3. The orchestrator called back to the worker's API to execute the agent
+4. The agent called the LLM, which decided to use the `get_weather` tool
+5. Polos recorded every step - if the process crashed, it would resume exactly where it left off
+
+This is durable execution: your agent's state survives failures, and completed steps are never re-executed.
 
 ## Next steps
 
-Now that you have Polos running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="What is Polos?" icon="book" href="/getting-started/what-is-polos">
-  Learn about durable execution and why it matters.
-</Card>
-
-<Card title="Fundamentals" icon="lightbulb" href="/fundamentals/workflow">
-  Understand core concepts like workflows, steps, and agents.
-</Card>
-
-<Card title="Agents" icon="robot" href="/agents/overview">
-  Build powerful AI agents with tools and memory.
-</Card>
-
-<Card title="Workflows" icon="diagram-project" href="/workflows/steps">
-  Orchestrate complex multi-step processes.
-</Card>
-
+  <Card title="Core Concepts" icon="lightbulb" href="/fundamentals/overview">
+    Understand how Polos handles state and durability
+  </Card>
+  <Card title="Agents" icon="robot" href="/agents/overview">
+    Learn about tools, streaming, and agent configuration
+  </Card>
+  <Card title="Workflows" icon="diagram-project" href="/workflows/overview">
+    Orchestrate multi-step processes with human-in-the-loop
+  </Card>
+  <Card title="Examples" icon="book-open" href="/guides/cookbook-examples">
+    See more examples: HITL agents, multi-agent systems, and more
+  </Card>
 </CardGroup>
 
 <Note>
-  **Need help?** Join our [Discord community](/community/discord) or check out the [cookbook examples](/guides/cookbook-examples).
+**Need help?** Join our [Discord community](https://discord.com/invite/ZAxHKMPwFG) for support and discussions.
 </Note>
