@@ -1,0 +1,56 @@
+---
+title: "03 - Agent Streaming"
+description: "Stream agent responses in real-time"
+---
+
+Stream agent responses as they're generated.
+
+## Stream text chunks
+
+```python
+result = await storyteller.stream(client, "Tell me a story about a robot")
+
+# Iterate over text chunks as they arrive
+async for chunk in result.text_chunks:
+    print(chunk, end="", flush=True)
+```
+
+## Stream all events
+
+```python
+result = await storyteller.stream(client, "Write a haiku")
+
+async for event in result.events:
+    if event.event_type == "text_delta":
+        print(event.data.get("content", ""), end="", flush=True)
+    elif event.event_type == "tool_call":
+        tool_name = event.data.get("tool_call", {}).get("function", {}).get("name")
+        print(f"\n[Tool: {tool_name}]")
+    elif event.event_type == "agent_finish":
+        print("\n[Done]")
+```
+
+## Get final text
+
+```python
+result = await storyteller.stream(client, "What are benefits of reading?")
+
+# Wait for completion and get accumulated text
+final_text = await result.text()
+print(final_text)
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/03-agent-streaming
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/03-agent-streaming)

@@ -1,0 +1,65 @@
+---
+title: "05 - Thinking Agent"
+description: "Chain-of-thought reasoning with structured output"
+---
+
+Build agents that show their reasoning process step by step.
+
+## Define a reasoning schema
+
+```python
+from pydantic import BaseModel, Field
+
+class ReasoningOutput(BaseModel):
+    problem: str = Field(description="The original problem")
+    thinking_steps: list[str] = Field(description="Step-by-step reasoning")
+    conclusion: str = Field(description="Final answer")
+    confidence: str = Field(description="high, medium, or low")
+```
+
+## Create a thinking agent
+
+```python
+from polos import Agent, max_steps, MaxStepsConfig
+
+thinking_agent = Agent(
+    id="thinking_agent",
+    provider="openai",
+    model="gpt-4o-mini",
+    system_prompt="""You are a logical reasoning expert. When given a problem:
+1. Restate the problem
+2. Break down your thinking into clear steps
+3. Consider potential pitfalls
+4. Arrive at a conclusion
+5. State your confidence level""",
+    output_schema=ReasoningOutput,
+    stop_conditions=[max_steps(MaxStepsConfig(limit=20))],
+)
+```
+
+## Get structured reasoning
+
+```python
+result = await thinking_agent.run(client, "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?")
+
+print(f"Problem: {result.result.problem}")
+for i, step in enumerate(result.result.thinking_steps):
+    print(f"Step {i+1}: {step}")
+print(f"Conclusion: {result.result.conclusion}")
+print(f"Confidence: {result.result.confidence}")
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/05-thinking-agent
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/05-thinking-agent)

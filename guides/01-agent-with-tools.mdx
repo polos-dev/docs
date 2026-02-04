@@ -1,0 +1,56 @@
+---
+title: "01 - Agent with tools"
+description: "Create an agent with tools"
+---
+
+A simple agent that uses a tool to look up weather information.
+
+## Define a tool
+
+```python
+from pydantic import BaseModel
+from polos import tool, WorkflowContext
+
+class WeatherInput(BaseModel):
+    city: str
+
+class WeatherOutput(BaseModel):
+    city: str
+    temperature: int
+    condition: str
+
+@tool(description="Get weather for a city")
+async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutput:
+    # In production, call a real weather API
+    return WeatherOutput(city=input.city, temperature=72, condition="Sunny")
+```
+
+## Create the agent
+
+```python
+from polos import Agent, max_steps, MaxStepsConfig
+
+weather_agent = Agent(
+    id="weather_agent",
+    provider="openai",
+    model="gpt-4o-mini",
+    system_prompt="You are a weather assistant. Use the get_weather tool to look up weather.",
+    tools=[get_weather],
+    stop_conditions=[max_steps(MaxStepsConfig(limit=10))],
+)
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/01-weather-agent
+cp .env.example .env  # Add POLOS_PROJECT_ID and OPENAI_API_KEY
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-weather-agent)

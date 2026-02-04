@@ -1,0 +1,87 @@
+---
+title: "11 - Error Handling"
+description: "Handle errors with retries, fallbacks, and compensation"
+---
+
+Patterns for handling errors in workflows.
+
+## Customize automatic retry
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow(id="retry_example")
+async def retry_example(ctx: WorkflowContext, payload):
+    result = await ctx.step.run(
+        "unreliable_op",
+        unreliable_operation,
+        max_retries=3,
+        base_delay=1.0,
+        max_delay=10.0,
+    )
+    return {"result": result}
+```
+
+## Error recovery
+
+```python
+from polos import StepExecutionError
+
+@workflow(id="error_recovery")
+async def error_recovery(ctx: WorkflowContext, payload):
+    results, errors = [], []
+
+    for item in payload["items"]:
+        try:
+            result = await ctx.step.run(f"process_{item}", process_item, item)
+            results.append(result)
+        except StepExecutionError as e:
+            errors.append({"item": item, "error": str(e)})
+
+    return {"processed": len(results), "failed": len(errors)}
+```
+
+## Fallback pattern
+
+```python
+@workflow(id="fallback_pattern")
+async def fallback_pattern(ctx: WorkflowContext, payload):
+    try:
+        return await ctx.step.run("primary", primary_process, payload)
+    except StepExecutionError:
+        return await ctx.step.run("fallback", fallback_process, payload)
+```
+
+## Compensation (rollback)
+
+```python
+@workflow(id="compensation")
+async def compensation(ctx: WorkflowContext, payload):
+    completed = []
+    try:
+        await ctx.step.run("reserve", reserve_inventory, payload)
+        completed.append("reserve")
+        await ctx.step.run("charge", charge_payment, payload)
+        completed.append("charge")
+        return {"status": "success"}
+    except StepExecutionError:
+        # Rollback in reverse order
+        for step in reversed(completed):
+            await ctx.step.run(f"undo_{step}", compensate[step], payload)
+        return {"status": "rolled_back"}
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/11-error-handling
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/11-error-handling)

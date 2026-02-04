@@ -1,0 +1,67 @@
+---
+title: "10 - State Persistence"
+description: "Maintain typed state across workflow executions"
+---
+
+Workflows can maintain typed state for the execution.
+
+## Define a state schema
+
+```python
+from polos import WorkflowState
+
+class ShoppingCartState(WorkflowState):
+    items: list[dict] = []
+    total: float = 0.0
+```
+
+## Create a stateful workflow
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow(id="shopping_cart", state_schema=ShoppingCartState)
+async def shopping_cart(ctx: WorkflowContext, payload: CartPayload):
+    if payload.action == "add" and payload.item:
+        ctx.state.items.append(payload.item.model_dump())
+        ctx.state.total += payload.item.price * payload.item.quantity
+
+    elif payload.action == "remove" and payload.item_id:
+        for i, item in enumerate(ctx.state.items):
+            if item.get("id") == payload.item_id:
+                ctx.state.total -= item["price"] * item["quantity"]
+                ctx.state.items.pop(i)
+                break
+
+    elif payload.action == "clear":
+        ctx.state.items = []
+        ctx.state.total = 0.0
+
+    return {"items": ctx.state.items, "total": ctx.state.total}
+```
+
+## Initialize with state
+
+```python
+# Start workflow with initial state
+handle = await client.workflows.invoke(
+    "shopping_cart",
+    payload={"action": "add", "item": {...}},
+    initial_state={"items": [], "total": 0.0},
+)
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/10-state-persistence
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/10-state-persistence)

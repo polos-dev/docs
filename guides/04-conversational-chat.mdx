@@ -1,0 +1,60 @@
+---
+title: "04 - Conversational Chat"
+description: "Build a chat agent with conversation memory"
+---
+
+Build an interactive chat agent that maintains conversation history.
+
+## Create a chat agent with tools
+
+```python
+from polos import Agent, max_steps, MaxStepsConfig
+
+chat_assistant = Agent(
+    id="chat_assistant",
+    provider="openai",
+    model="gpt-4o-mini",
+    system_prompt="""You are a friendly assistant. You can:
+- Tell the current time using get_current_time
+- Get weather using get_weather
+- Perform calculations using calculator""",
+    tools=[get_current_time, get_weather, calculator],
+    stop_conditions=[max_steps(MaxStepsConfig(limit=10))],
+)
+```
+
+## Maintain conversation context
+
+```python
+# Use conversation_id to maintain history across messages
+conversation_id = "user-123-session"
+
+# First message
+result1 = await chat_assistant.stream(
+    client,
+    "What's the weather in Tokyo?",
+    conversation_id=conversation_id,
+)
+
+# Follow-up uses same context
+result2 = await chat_assistant.stream(
+    client,
+    "How about London?",  # Agent remembers we're asking about weather
+    conversation_id=conversation_id,
+)
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/04-conversational-chat
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python chat.py        # Terminal 2 (interactive)
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/04-conversational-chat)

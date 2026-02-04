@@ -1,0 +1,64 @@
+---
+title: "07 - Lifecycle Hooks"
+description: "Hook into agent execution events"
+---
+
+Add hooks to log, validate, or modify agent execution at specific points.
+
+## Available hooks
+
+| Hook | Timing | Use Cases |
+|------|--------|-----------|
+| `on_start` | Before agent starts | Input validation, logging |
+| `on_end` | After agent completes | Cleanup, metrics |
+| `on_agent_step_start` | Before each LLM call | Rate limiting |
+| `on_agent_step_end` | After each LLM call | Logging responses |
+| `on_tool_start` | Before tool execution | Modify inputs |
+| `on_tool_end` | After tool execution | Modify outputs |
+
+## Define hooks
+
+```python
+async def log_start(ctx, input):
+    print(f"Agent starting with: {input[:50]}...")
+
+async def log_end(ctx, result):
+    print(f"Agent completed: {result.status}")
+
+async def validate_input(ctx, input):
+    if len(input) > 10000:
+        raise ValueError("Input too long")
+```
+
+## Attach hooks to agent
+
+```python
+from polos import Agent
+
+logged_agent = Agent(
+    id="logged_agent",
+    provider="openai",
+    model="gpt-4o-mini",
+    system_prompt="You are a helpful assistant.",
+    tools=[search, calculate],
+    on_start=[validate_input, log_start],
+    on_end=[log_end],
+    on_tool_start=[log_tool_start],
+    on_tool_end=[log_tool_end],
+)
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/07-lifecycle-hooks
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/07-lifecycle-hooks)

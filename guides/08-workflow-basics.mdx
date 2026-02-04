@@ -1,0 +1,73 @@
+---
+title: "08 - Workflow Basics"
+description: "Create durable workflows with automatic retry"
+---
+
+Workflows are durable functions with automatic retry and state management.
+
+## Simple workflow
+
+```python
+from polos import workflow, WorkflowContext
+from pydantic import BaseModel
+
+class OrderPayload(BaseModel):
+    order_id: str
+    items: list[str]
+    total: float
+
+@workflow(id="process_order")
+async def process_order(ctx: WorkflowContext, payload: OrderPayload):
+    # Steps are automatically retried on failure
+    await ctx.step.run("validate", validate_order, payload)
+    await ctx.step.run("reserve", reserve_inventory, payload.items)
+    await ctx.step.run("charge", process_payment, payload.total)
+
+    # Deterministic UUID (same on replay)
+    confirmation = await ctx.step.uuid("confirmation")
+
+    return {"status": "completed", "confirmation": confirmation}
+```
+
+## Custom retry settings
+
+```python
+await ctx.step.run(
+    "unreliable_api",
+    call_external_api,
+    data,
+    max_retries=5,
+    base_delay=2.0,
+    max_delay=30.0,
+)
+```
+
+## Deterministic operations
+
+```python
+# These return the same value on replay
+random_value = await ctx.step.random("coin_flip")
+unique_id = await ctx.step.uuid("order_id")
+timestamp = await ctx.step.now("created_at")
+```
+
+## Wait for time
+
+```python
+await ctx.step.wait_for("cooldown", seconds=60)
+```
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/08-workflow-basics
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/08-workflow-basics)
