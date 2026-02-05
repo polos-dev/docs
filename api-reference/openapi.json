@@ -1,32 +1,356 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "OpenAPI Plant Store",
-    "description": "A sample API that uses a plant store as an example to demonstrate features in the OpenAPI specification",
+    "title": "Polos Orchestrator API",
+    "description": "API for the Polos durable execution platform for AI agents",
+    "contact": {
+      "name": "Polos Team",
+      "url": "https://github.com/polos-dev/polos"
+    },
     "license": {
-      "name": "MIT"
+      "name": ""
     },
     "version": "1.0.0"
   },
   "servers": [
     {
-      "url": "http://sandbox.mintlify.com"
-    }
-  ],
-  "security": [
-    {
-      "bearerAuth": []
+      "url": "/",
+      "description": "Current server"
     }
   ],
   "paths": {
-    "/plants": {
+    "/api/v1/agents": {
       "get": {
-        "description": "Returns all plants from the system that the user has access to",
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Get all agents for a project",
+        "operationId": "get_agents",
         "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of agents"
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/register": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Register an agent definition",
+        "operationId": "register_agent",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "409": {
+            "description": "Agent already exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/{agent_id}": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Get an agent definition by ID",
+        "operationId": "get_agent_definition",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deployment_id",
+            "in": "query",
+            "description": "Deployment ID (optional)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent definition"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/deployments/{deployment_id}": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Get a deployment by ID",
+        "operationId": "get_deployment",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "description": "Deployment ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deployment details"
+          },
+          "404": {
+            "description": "Deployment not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/event-triggers/register": {
+      "post": {
+        "tags": [
+          "Event Triggers"
+        ],
+        "summary": "Register an event trigger for a workflow",
+        "operationId": "register_event_trigger",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterEventTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Event trigger registered"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Get events from a topic",
+        "operationId": "get_events",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "query",
+            "description": "Topic to get events from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "last_sequence_id",
+            "in": "query",
+            "description": "Last sequence ID for pagination",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "last_timestamp",
+            "in": "query",
+            "description": "Last timestamp for pagination (RFC3339)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "limit",
             "in": "query",
-            "description": "The maximum number of results to return",
+            "description": "Maximum number of events (default: 100)",
+            "required": false,
             "schema": {
               "type": "integer",
               "format": "int32"
@@ -35,38 +359,58 @@
         ],
         "responses": {
           "200": {
-            "description": "Plant response",
+            "description": "List of events",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Plant"
-                  }
+                  "$ref": "#/components/schemas/GetEventsResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/publish": {
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Publish events to a topic",
+        "operationId": "publish_event",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID (optional if execution_id is provided)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
-        }
-      },
-      "post": {
-        "description": "Creates a new plant in the store",
+        ],
         "requestBody": {
-          "description": "Plant to add to the store",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/PublishEventRequest"
               }
             }
           },
@@ -74,79 +418,1689 @@
         },
         "responses": {
           "200": {
-            "description": "plant response",
+            "description": "Events published successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Plant"
+                  "$ref": "#/components/schemas/PublishEventResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "unexpected error",
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/stream": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Stream events via Server-Sent Events (SSE)",
+        "operationId": "stream_events",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "topic",
+            "in": "query",
+            "description": "Topic to stream from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflow_run_id",
+            "in": "query",
+            "description": "Workflow run ID to stream events for",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "last_sequence_id",
+            "in": "query",
+            "description": "Last sequence ID for continuation",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "last_timestamp",
+            "in": "query",
+            "description": "Last timestamp for continuation (RFC3339)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of events"
+          },
+          "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
       }
     },
-    "/plants/{id}": {
-      "delete": {
-        "description": "Deletes a single plant based on the ID supplied",
+    "/api/v1/executions/{execution_id}": {
+      "get": {
+        "tags": [
+          "Executions"
+        ],
+        "summary": "Get execution details by ID",
+        "operationId": "get_execution",
         "parameters": [
           {
-            "name": "id",
+            "name": "execution_id",
             "in": "path",
-            "description": "ID of plant to delete",
+            "description": "Execution ID",
             "required": true,
             "schema": {
-              "type": "integer",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid execution ID"
+          },
+          "404": {
+            "description": "Execution not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/executions/{execution_id}/cancel": {
+      "post": {
+        "tags": [
+          "Executions"
+        ],
+        "summary": "Cancel an execution",
+        "operationId": "cancel_execution",
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "description": "Execution ID to cancel",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelExecutionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Execution cannot be cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Execution not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/executions/{execution_id}/resume": {
+      "post": {
+        "tags": [
+          "Executions"
+        ],
+        "summary": "Resume a waiting execution",
+        "operationId": "resume_execution",
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "description": "Execution ID to resume",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeExecutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Execution resumed"
+          },
+          "400": {
+            "description": "Invalid execution ID"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Get all projects for the current user",
+        "operationId": "get_projects",
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Create a new project",
+        "operationId": "create_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Project created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Get a project by ID",
+        "operationId": "get_project_by_id",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/members": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Get all members of a project",
+        "operationId": "get_project_members",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of project members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectMemberResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules": {
+      "post": {
+        "tags": [
+          "Schedules"
+        ],
+        "summary": "Create a schedule for a workflow",
+        "operationId": "create_schedule",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateScheduleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Workflow is not schedulable"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/workflows": {
+      "get": {
+        "tags": [
+          "Schedules"
+        ],
+        "summary": "Get all workflows that have schedules",
+        "operationId": "get_scheduled_workflows",
+        "responses": {
+          "200": {
+            "description": "List of workflow IDs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetScheduledWorkflowsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/workflows/{workflow_id}": {
+      "get": {
+        "tags": [
+          "Schedules"
+        ],
+        "summary": "Get all schedules for a workflow",
+        "operationId": "get_schedules_for_workflow",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Workflow ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetSchedulesResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tools": {
+      "get": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "Get all tools for a project",
+        "operationId": "get_tools",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tools"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tools/register": {
+      "post": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "Register a tool definition",
+        "operationId": "register_tool",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterToolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Tool registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterToolResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "409": {
+            "description": "Tool already exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tools/{tool_id}": {
+      "get": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "Get a tool definition by ID",
+        "operationId": "get_tool_definition",
+        "parameters": [
+          {
+            "name": "tool_id",
+            "in": "path",
+            "description": "Tool ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deployment_id",
+            "in": "query",
+            "description": "Deployment ID (optional)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool definition"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tool not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/traces": {
+      "get": {
+        "tags": [
+          "Traces"
+        ],
+        "summary": "Get traces with optional filters",
+        "operationId": "get_traces",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Start time filter (RFC3339)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "End time filter (RFC3339)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "root_span_type",
+            "in": "query",
+            "description": "Filter by root span type",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "root_span_name",
+            "in": "query",
+            "description": "Filter by root span name",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "has_error",
+            "in": "query",
+            "description": "Filter by error presence",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results (default: 50)",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Offset for pagination",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int64"
             }
           }
         ],
         "responses": {
-          "204": {
-            "description": "Plant deleted",
-            "content": {}
+          "200": {
+            "description": "List of traces"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/traces/{trace_id}": {
+      "get": {
+        "tags": [
+          "Traces"
+        ],
+        "summary": "Get a trace by ID with all spans",
+        "operationId": "get_trace_by_id",
+        "parameters": [
+          {
+            "name": "trace_id",
+            "in": "path",
+            "description": "Trace ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace with all spans"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workers/deployments": {
+      "post": {
+        "tags": [
+          "Workers"
+        ],
+        "summary": "Register or update a worker deployment",
+        "operationId": "register_worker_deployment",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterWorkerDeploymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Deployment registered"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workers/deployments/{deployment_id}/workflows": {
+      "post": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Register a workflow in a deployment",
+        "operationId": "register_deployment_workflow",
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "description": "Deployment ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeploymentWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow registered in deployment"
           },
           "400": {
-            "description": "unexpected error",
+            "description": "Invalid workflow type"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workers/queues": {
+      "post": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Register workflow queues",
+        "operationId": "register_queues",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterQueuesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Queues registered successfully"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workers/register": {
+      "post": {
+        "tags": [
+          "Workers"
+        ],
+        "summary": "Register a worker",
+        "operationId": "register_worker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterWorkerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Worker registered",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/RegisterWorkerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Get all workflows for a project",
+        "operationId": "get_workflows",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of workflows"
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
       }
-    }
-  },
-  "webhooks": {
-    "/plant/webhook": {
+    },
+    "/api/v1/workflows/batch_run": {
       "post": {
-        "description": "Information about a new plant added to the store",
+        "tags": [
+          "Executions"
+        ],
+        "summary": "Submit multiple workflows in batch",
+        "operationId": "submit_workflows",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
-          "description": "Plant added to the store",
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/SubmitWorkflowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Workflows submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitWorkflowsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Project or deployment not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/runs": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Get workflow runs (executions) with optional filters",
+        "operationId": "get_workflow_runs",
+        "parameters": [
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workflow_type",
+            "in": "query",
+            "description": "Filter by workflow type (workflow, agent, tool)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "workflow_id",
+            "in": "query",
+            "description": "Filter by workflow ID",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results (default: 50)",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Offset for pagination",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Start time filter (RFC3339)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "End time filter (RFC3339)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of workflow runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowRunSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
         },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{workflow_id}": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Get a workflow by ID",
+        "operationId": "get_workflow",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Workflow ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Return a 200 status to indicate that the data was received successfully"
+            "description": "Workflow details"
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workflows/{workflow_id}/run": {
+      "post": {
+        "tags": [
+          "Executions"
+        ],
+        "summary": "Submit a workflow for execution",
+        "operationId": "submit_workflow",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Workflow ID to execute",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Project-ID",
+            "in": "header",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitWorkflowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Project or deployment not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "cookie_auth": []
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check endpoint",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -154,64 +2108,1382 @@
   },
   "components": {
     "schemas": {
-      "Plant": {
-        "required": [
-          "name"
-        ],
+      "CancelExecutionResponse": {
         "type": "object",
+        "description": "Response after cancelling an execution",
+        "required": [
+          "execution_id",
+          "status",
+          "cancelled_at"
+        ],
         "properties": {
-          "name": {
-            "description": "The name of the plant",
-            "type": "string"
+          "cancelled_at": {
+            "type": "string",
+            "description": "Cancellation timestamp (RFC3339)"
           },
-          "tag": {
-            "description": "Tag to specify the type",
-            "type": "string"
+          "execution_id": {
+            "type": "string",
+            "description": "Execution ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "New status"
           }
         }
       },
-      "NewPlant": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Plant"
-          },
-          {
-            "required": [
-              "id"
+      "CreateProjectRequest": {
+        "type": "object",
+        "description": "Request to create a new project",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
             ],
-            "type": "object",
-            "properties": {
-              "id": {
-                "description": "Identification number of the plant",
-                "type": "integer",
-                "format": "int64"
-              }
-            }
+            "description": "Optional project description"
+          },
+          "name": {
+            "type": "string",
+            "description": "Project name"
           }
-        ]
+        }
       },
-      "Error": {
+      "CreateScheduleRequest": {
+        "type": "object",
+        "description": "Request to create a schedule",
+        "required": [
+          "workflow_id",
+          "cron",
+          "timezone",
+          "key"
+        ],
+        "properties": {
+          "cron": {
+            "type": "string",
+            "description": "Cron expression (e.g., \"0 * * * *\" for every hour)"
+          },
+          "key": {
+            "type": "string",
+            "description": "Unique key for the schedule"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone (e.g., \"America/New_York\")"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID to schedule"
+          }
+        }
+      },
+      "CreateScheduleResponse": {
+        "type": "object",
+        "description": "Response after creating a schedule",
+        "required": [
+          "schedule_id"
+        ],
+        "properties": {
+          "schedule_id": {
+            "type": "string",
+            "description": "Created schedule ID"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Standard error response",
         "required": [
           "error",
-          "message"
+          "error_type"
         ],
-        "type": "object",
         "properties": {
           "error": {
-            "type": "integer",
-            "format": "int32"
+            "type": "string",
+            "description": "Human-readable error message"
           },
-          "message": {
-            "type": "string"
+          "error_type": {
+            "type": "string",
+            "description": "Machine-readable error type code"
+          }
+        }
+      },
+      "EventData": {
+        "type": "object",
+        "description": "Event data for publishing",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "attempt_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Attempt number for retries"
+          },
+          "data": {
+            "description": "Event payload"
+          },
+          "event_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Event type identifier"
+          },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Associated execution ID"
+          }
+        }
+      },
+      "EventResponse": {
+        "type": "object",
+        "description": "Event response",
+        "required": [
+          "id",
+          "sequence_id",
+          "topic",
+          "data",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "data": {
+            "description": "Event data"
+          },
+          "event_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Event type"
+          },
+          "id": {
+            "type": "string",
+            "description": "Event ID"
+          },
+          "sequence_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sequence ID"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Topic"
+          }
+        }
+      },
+      "ExecutionResponse": {
+        "type": "object",
+        "description": "Execution details response",
+        "required": [
+          "id",
+          "workflow_id",
+          "status",
+          "payload",
+          "created_at",
+          "retry_count"
+        ],
+        "properties": {
+          "assigned_to_worker": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Assigned worker ID"
+          },
+          "batch_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Batch ID"
+          },
+          "cancelled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cancellation timestamp (RFC3339)"
+          },
+          "cancelled_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cancelled by (user or system)"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Completion timestamp (RFC3339)"
+          },
+          "concurrency_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concurrency key"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "deployment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deployment ID"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if failed"
+          },
+          "id": {
+            "type": "string",
+            "description": "Execution ID"
+          },
+          "output_schema_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Output schema name"
+          },
+          "parent_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent execution ID"
+          },
+          "payload": {
+            "description": "Input payload"
+          },
+          "queue_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Queue name"
+          },
+          "result": {
+            "description": "Execution result"
+          },
+          "retry_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Retry count"
+          },
+          "root_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root execution ID"
+          },
+          "run_timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Timeout in seconds"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session ID"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Start timestamp (RFC3339)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Execution status (pending, running, completed, failed, cancelled)"
+          },
+          "step_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Step key"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User ID"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID"
+          }
+        }
+      },
+      "GetEventsResponse": {
+        "type": "object",
+        "description": "Response for getting events",
+        "required": [
+          "events",
+          "has_more"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventResponse"
+            },
+            "description": "List of events"
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether more events exist"
+          },
+          "next_sequence_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Next sequence ID for pagination"
+          }
+        }
+      },
+      "GetScheduledWorkflowsResponse": {
+        "type": "object",
+        "description": "Response for getting scheduled workflow IDs",
+        "required": [
+          "workflow_ids"
+        ],
+        "properties": {
+          "workflow_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of workflow IDs with schedules"
+          }
+        }
+      },
+      "GetSchedulesResponse": {
+        "type": "object",
+        "description": "Response for getting schedules",
+        "required": [
+          "schedules"
+        ],
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleResponse"
+            },
+            "description": "List of schedules"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Health status of the service"
+          }
+        }
+      },
+      "ProjectMemberResponse": {
+        "type": "object",
+        "description": "Project member details",
+        "required": [
+          "id",
+          "user_id",
+          "role",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "id": {
+            "type": "string",
+            "description": "Member ID"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role (Admin, Write, Read)"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "Last update timestamp (RFC3339)"
+          },
+          "user": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UserInfo",
+                "description": "User details"
+              }
+            ]
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User ID"
+          }
+        }
+      },
+      "ProjectResponse": {
+        "type": "object",
+        "description": "Project details response",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional project description"
+          },
+          "id": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "Last update timestamp (RFC3339)"
+          }
+        }
+      },
+      "ProjectsResponse": {
+        "type": "object",
+        "description": "List of projects response",
+        "required": [
+          "projects"
+        ],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            },
+            "description": "List of projects"
+          }
+        }
+      },
+      "PublishEventRequest": {
+        "type": "object",
+        "description": "Request to publish events",
+        "required": [
+          "topic",
+          "events"
+        ],
+        "properties": {
+          "durable": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether events are durable (deprecated)"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventData"
+            },
+            "description": "List of events to publish"
+          },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Source execution ID"
+          },
+          "root_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root execution ID"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Topic to publish to"
+          }
+        }
+      },
+      "PublishEventResponse": {
+        "type": "object",
+        "description": "Response after publishing events",
+        "required": [
+          "sequence_ids",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Publication timestamp (RFC3339)"
+          },
+          "sequence_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Sequence IDs assigned to events"
+          }
+        }
+      },
+      "QueueInfo": {
+        "type": "object",
+        "description": "Queue information",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "concurrency_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Concurrency limit for the queue"
+          },
+          "name": {
+            "type": "string",
+            "description": "Queue name"
+          }
+        }
+      },
+      "RegisterAgentRequest": {
+        "type": "object",
+        "description": "Request to register an agent definition",
+        "required": [
+          "id",
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "config": {
+            "description": "Additional configuration"
+          },
+          "deployment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deployment ID (optional, uses latest if not provided)"
+          },
+          "id": {
+            "type": "string",
+            "description": "Agent ID"
+          },
+          "max_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum output tokens"
+          },
+          "metadata": {
+            "description": "Agent metadata"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model name (e.g., \"gpt-4\", \"claude-3\")"
+          },
+          "provider": {
+            "type": "string",
+            "description": "LLM provider (e.g., \"openai\", \"anthropic\")"
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "System prompt for the agent"
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Temperature for LLM generation"
+          },
+          "tools": {
+            "description": "Tools available to the agent"
+          }
+        }
+      },
+      "RegisterAgentResponse": {
+        "type": "object",
+        "description": "Response for agent registration",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether registration was successful"
+          }
+        }
+      },
+      "RegisterDeploymentWorkflowRequest": {
+        "type": "object",
+        "description": "Request to register a workflow in a deployment",
+        "required": [
+          "workflow_id",
+          "workflow_type"
+        ],
+        "properties": {
+          "scheduled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the workflow is scheduled"
+          },
+          "trigger_on_event": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to trigger on events"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID"
+          },
+          "workflow_type": {
+            "type": "string",
+            "description": "Workflow type (workflow, agent, tool)"
+          }
+        }
+      },
+      "RegisterEventTriggerRequest": {
+        "type": "object",
+        "description": "Request to register an event trigger",
+        "required": [
+          "workflow_id",
+          "deployment_id",
+          "event_topic",
+          "batch_size"
+        ],
+        "properties": {
+          "batch_size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of events to batch before triggering"
+          },
+          "batch_timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Timeout in seconds for batching"
+          },
+          "deployment_id": {
+            "type": "string",
+            "description": "Deployment ID"
+          },
+          "event_topic": {
+            "type": "string",
+            "description": "Topic to listen for events"
+          },
+          "queue_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Queue name for triggered executions"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID to trigger"
+          }
+        }
+      },
+      "RegisterQueuesRequest": {
+        "type": "object",
+        "description": "Request to register workflow queues",
+        "required": [
+          "deployment_id",
+          "queues"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": "string",
+            "description": "Deployment ID"
+          },
+          "queues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueueInfo"
+            },
+            "description": "List of queues to register"
+          }
+        }
+      },
+      "RegisterToolRequest": {
+        "type": "object",
+        "description": "Request to register a tool definition",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deployment ID (optional, uses latest if not provided)"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool description"
+          },
+          "id": {
+            "type": "string",
+            "description": "Tool ID"
+          },
+          "metadata": {
+            "description": "Tool metadata"
+          },
+          "parameters": {
+            "description": "Tool parameters schema"
+          },
+          "tool_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool type"
+          }
+        }
+      },
+      "RegisterToolResponse": {
+        "type": "object",
+        "description": "Response for tool registration",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether registration was successful"
+          }
+        }
+      },
+      "RegisterWorkerDeploymentRequest": {
+        "type": "object",
+        "description": "Request to register a deployment for workers",
+        "required": [
+          "deployment_id"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": "string",
+            "description": "Deployment ID"
+          }
+        }
+      },
+      "RegisterWorkerRequest": {
+        "type": "object",
+        "description": "Request to register a worker",
+        "required": [
+          "project_id"
+        ],
+        "properties": {
+          "capabilities": {
+            "description": "Worker capabilities"
+          },
+          "deployment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deployment ID (optional, uses latest if not provided)"
+          },
+          "max_concurrent_executions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum concurrent executions"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Worker mode (push)"
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "push_endpoint_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Push endpoint URL for receiving work"
+          }
+        }
+      },
+      "RegisterWorkerResponse": {
+        "type": "object",
+        "description": "Response after registering a worker",
+        "required": [
+          "worker_id"
+        ],
+        "properties": {
+          "worker_id": {
+            "type": "string",
+            "description": "Assigned worker ID"
+          }
+        }
+      },
+      "ResumeExecutionRequest": {
+        "type": "object",
+        "description": "Request to resume a waiting execution",
+        "required": [
+          "step_key",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "description": "Data to resume with"
+          },
+          "step_key": {
+            "type": "string",
+            "description": "Step key that's waiting"
+          }
+        }
+      },
+      "ScheduleResponse": {
+        "type": "object",
+        "description": "Schedule details",
+        "required": [
+          "id",
+          "workflow_id",
+          "cron",
+          "timezone",
+          "key",
+          "status",
+          "next_run_at",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "cron": {
+            "type": "string",
+            "description": "Cron expression"
+          },
+          "id": {
+            "type": "string",
+            "description": "Schedule ID"
+          },
+          "key": {
+            "type": "string",
+            "description": "Unique key"
+          },
+          "last_run_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last run timestamp (RFC3339)"
+          },
+          "next_run_at": {
+            "type": "string",
+            "description": "Next run timestamp (RFC3339)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Status (active, paused)"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "Last update timestamp (RFC3339)"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID"
+          }
+        }
+      },
+      "SubmitWorkflowRequest": {
+        "type": "object",
+        "description": "Request to submit a workflow for execution",
+        "required": [
+          "payload"
+        ],
+        "properties": {
+          "concurrency_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concurrency key for deduplication"
+          },
+          "deployment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deployment ID (optional, uses latest if not provided)"
+          },
+          "initial_state": {
+            "description": "Initial state for the workflow"
+          },
+          "otel_traceparent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OpenTelemetry trace parent (deprecated)"
+          },
+          "parent_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent execution ID (deprecated)"
+          },
+          "payload": {
+            "description": "Input payload for the workflow"
+          },
+          "queue_concurrency_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Queue concurrency limit"
+          },
+          "queue_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Queue name for execution"
+          },
+          "root_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root execution ID (deprecated)"
+          },
+          "run_timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Timeout in seconds (default: 3600 = 60 minutes)"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session ID for grouping executions"
+          },
+          "step_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Step key identifier (deprecated)"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User ID associated with the execution"
+          },
+          "wait_for_subworkflow": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to wait for subworkflow completion (deprecated)"
+          }
+        }
+      },
+      "SubmitWorkflowResponse": {
+        "type": "object",
+        "description": "Response after submitting a workflow",
+        "required": [
+          "execution_id",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "execution_id": {
+            "type": "string",
+            "description": "Execution ID"
+          }
+        }
+      },
+      "SubmitWorkflowsRequest": {
+        "type": "object",
+        "description": "Request to submit multiple workflows in batch",
+        "required": [
+          "workflows"
+        ],
+        "properties": {
+          "deployment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deployment ID (optional)"
+          },
+          "otel_traceparent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OpenTelemetry trace parent (deprecated)"
+          },
+          "parent_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Parent execution ID (deprecated)"
+          },
+          "root_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root execution ID (deprecated)"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session ID"
+          },
+          "step_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Step key identifier (deprecated)"
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User ID"
+          },
+          "wait_for_subworkflow": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to wait for subworkflow completion (deprecated)"
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRequest"
+            },
+            "description": "List of workflows to submit"
+          }
+        }
+      },
+      "SubmitWorkflowsResponse": {
+        "type": "object",
+        "description": "Response for batch workflow submission",
+        "required": [
+          "executions"
+        ],
+        "properties": {
+          "executions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubmitWorkflowResponse"
+            },
+            "description": "List of created executions"
+          }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "description": "User information",
+        "required": [
+          "id",
+          "email"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User's display name"
+          },
+          "email": {
+            "type": "string",
+            "description": "User's email address"
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User's first name"
+          },
+          "id": {
+            "type": "string",
+            "description": "User ID"
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "User's last name"
+          }
+        }
+      },
+      "WorkflowRequest": {
+        "type": "object",
+        "description": "Individual workflow request in a batch",
+        "required": [
+          "workflow_id",
+          "payload"
+        ],
+        "properties": {
+          "concurrency_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concurrency key"
+          },
+          "initial_state": {
+            "description": "Initial state"
+          },
+          "payload": {
+            "description": "Input payload"
+          },
+          "queue_concurrency_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Queue concurrency limit"
+          },
+          "queue_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Queue name"
+          },
+          "run_timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Timeout in seconds"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID to execute"
+          }
+        }
+      },
+      "WorkflowRunSummary": {
+        "type": "object",
+        "description": "Workflow run summary",
+        "required": [
+          "id",
+          "workflow_id",
+          "created_at",
+          "status",
+          "payload"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Completion timestamp (RFC3339)"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "Creation timestamp (RFC3339)"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if failed"
+          },
+          "id": {
+            "type": "string",
+            "description": "Execution ID"
+          },
+          "payload": {
+            "description": "Input payload"
+          },
+          "result": {
+            "description": "Execution result"
+          },
+          "root_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root execution ID (for nested workflows)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Execution status"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "Workflow ID"
           }
         }
       }
     },
     "securitySchemes": {
-      "bearerAuth": {
+      "bearer_auth": {
         "type": "http",
         "scheme": "bearer"
+      },
+      "cookie_auth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "polos_auth"
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check endpoints"
+    },
+    {
+      "name": "Projects",
+      "description": "Project management endpoints"
+    },
+    {
+      "name": "Agents",
+      "description": "Agent definition management"
+    },
+    {
+      "name": "Tools",
+      "description": "Tool definition management"
+    },
+    {
+      "name": "Workflows",
+      "description": "Workflow management"
+    },
+    {
+      "name": "Executions",
+      "description": "Workflow execution management"
+    },
+    {
+      "name": "Traces",
+      "description": "Observability traces"
+    },
+    {
+      "name": "Events",
+      "description": "Event publishing and streaming"
+    },
+    {
+      "name": "Event Triggers",
+      "description": "Event-based workflow triggers"
+    },
+    {
+      "name": "Schedules",
+      "description": "Scheduled workflow execution"
+    },
+    {
+      "name": "Workers",
+      "description": "Worker registration and management"
+    },
+    {
+      "name": "Deployments",
+      "description": "Deployment management"
+    }
+  ]
 }

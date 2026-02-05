@@ -1,33 +1,88 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: 'API Reference'
+description: 'Polos Orchestrator REST API'
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+The Polos Orchestrator API provides programmatic access to manage agents, workflows, executions, events, and more.
 
-## Welcome
+## Base URL
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+```
+http://localhost:8080/api/v1
+```
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+For production deployments, replace with your orchestrator URL.
 
 ## Authentication
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+All API requests require:
+- **Bearer token**: Your API key for authentication
+- **Project ID header**: The project to operate on
 
-```json
-"security": [
-  {
-    "bearerAuth": []
-  }
-]
+```bash
+Authorization: Bearer your-api-key
+X-Project-ID: your-project-id
+```
+
+Example request:
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/workflows" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Project-ID: your-project-id"
+```
+
+## Core Resources
+
+<CardGroup cols={2}>
+  <Card title="Workflows" icon="diagram-project" href="/api-reference/endpoints/workflows/get-all-workflows-for-a-project">
+    Submit, query, and manage workflow executions
+  </Card>
+  <Card title="Agents" icon="robot" href="/api-reference/endpoints/agents/get-all-agents-for-a-project">
+    Register and query agent definitions
+  </Card>
+  <Card title="Executions" icon="play" href="/api-reference/endpoints/executions/submit-a-workflow-for-execution">
+    Submit workflows and manage running executions
+  </Card>
+  <Card title="Events" icon="bolt" href="/api-reference/endpoints/events/publish-events-to-a-topic">
+    Publish and subscribe to events
+  </Card>
+  <Card title="Schedules" icon="clock" href="/api-reference/endpoints/schedules/create-a-schedule-for-a-workflow">
+    Create and manage workflow schedules
+  </Card>
+  <Card title="Traces" icon="magnifying-glass" href="/api-reference/endpoints/traces/get-traces-with-optional-filters">
+    Query execution traces and spans
+  </Card>
+</CardGroup>
+
+## Common Operations
+
+### Submit a workflow
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/workflows/my_workflow/run" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Project-ID: your-project-id" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"key": "value"}}'
+```
+
+### Resume a suspended execution
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/executions/{execution_id}/resume" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Project-ID: your-project-id" \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"approved": true}}'
+```
+
+### Publish an event
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/events/publish" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "X-Project-ID: your-project-id" \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "orders/created", "data": {"order_id": "123"}}'
 ```

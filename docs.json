@@ -106,18 +106,102 @@
         "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
               "api-reference/introduction"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Health",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api-reference/endpoints/health/health-check-endpoint"
+            ]
+          },
+          {
+            "group": "Projects",
+            "pages": [
+              "api-reference/endpoints/projects/get-all-projects-for-the-current-user",
+              "api-reference/endpoints/projects/create-a-new-project",
+              "api-reference/endpoints/projects/get-a-project-by-id",
+              "api-reference/endpoints/projects/get-all-members-of-a-project"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "api-reference/endpoints/agents/get-all-agents-for-a-project",
+              "api-reference/endpoints/agents/register-an-agent-definition",
+              "api-reference/endpoints/agents/get-an-agent-definition-by-id"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api-reference/endpoints/tools/get-all-tools-for-a-project",
+              "api-reference/endpoints/tools/register-a-tool-definition",
+              "api-reference/endpoints/tools/get-a-tool-definition-by-id"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "api-reference/endpoints/workflows/get-all-workflows-for-a-project",
+              "api-reference/endpoints/workflows/get-a-workflow-by-id",
+              "api-reference/endpoints/workflows/get-workflow-runs-executions-with-optional-filters",
+              "api-reference/endpoints/workflows/register-workflow-queues"
+            ]
+          },
+          {
+            "group": "Executions",
+            "pages": [
+              "api-reference/endpoints/executions/submit-a-workflow-for-execution",
+              "api-reference/endpoints/executions/submit-multiple-workflows-in-batch",
+              "api-reference/endpoints/executions/get-execution-details-by-id",
+              "api-reference/endpoints/executions/resume-a-waiting-execution",
+              "api-reference/endpoints/executions/cancel-an-execution"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api-reference/endpoints/events/publish-events-to-a-topic",
+              "api-reference/endpoints/events/get-events-from-a-topic",
+              "api-reference/endpoints/events/stream-events-via-server-sent-events-sse"
+            ]
+          },
+          {
+            "group": "Event Triggers",
+            "pages": [
+              "api-reference/endpoints/event-triggers/register-an-event-trigger-for-a-workflow"
+            ]
+          },
+          {
+            "group": "Schedules",
+            "pages": [
+              "api-reference/endpoints/schedules/create-a-schedule-for-a-workflow",
+              "api-reference/endpoints/schedules/get-all-workflows-that-have-schedules",
+              "api-reference/endpoints/schedules/get-all-schedules-for-a-workflow"
+            ]
+          },
+          {
+            "group": "Traces",
+            "pages": [
+              "api-reference/endpoints/traces/get-traces-with-optional-filters",
+              "api-reference/endpoints/traces/get-a-trace-by-id-with-all-spans"
+            ]
+          },
+          {
+            "group": "Workers",
+            "pages": [
+              "api-reference/endpoints/workers/register-a-worker",
+              "api-reference/endpoints/workers/register-or-update-a-worker-deployment"
+            ]
+          },
+          {
+            "group": "Deployments",
+            "pages": [
+              "api-reference/endpoints/deployments/get-a-deployment-by-id",
+              "api-reference/endpoints/deployments/register-a-workflow-in-a-deployment"
             ]
           }
         ]
