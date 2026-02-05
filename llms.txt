@@ -1,0 +1,127 @@
+# Polos
+
+> Polos is a durable execution platform for AI agents. Build long-running,
+> autonomous agents with automatic state persistence, failure recovery, and
+> built-in event coordination. Write plain Python - no DAGs or graph syntax.
+
+## Core Concepts
+
+- **Agents**: LLM-powered entities that reason and call tools
+- **Workflows**: Durable functions with automatic retry and state management
+- **Steps**: Recorded operations that replay on failure (never re-execute completed work)
+- **Workers**: API servers that register agents/workflows with the orchestrator
+
+## Best Practices
+
+- Always use Pydantic models for workflow input and output
+- Use `@workflow` decorator for durable functions
+- Use `@tool` decorator for agent tools
+- Wrap side effects in `ctx.step.run()` for durability
+
+## Agent Patterns
+
+```python
+# Run agent and wait for result
+result = await agent.run(client, "prompt")
+
+# Stream agent response
+stream = await agent.stream(client, "prompt")
+async for chunk in stream.text_chunks:
+    print(chunk, end="")
+```
+
+## Workflow Step Patterns
+
+```python
+# Durable step execution (auto-retry)
+result = await ctx.step.run("step_name", my_function, arg1, arg2)
+
+# Invoke child workflow (fire-and-forget)
+handle = await ctx.step.invoke("name", child_workflow, payload)
+
+# Invoke and wait for result
+result = await ctx.step.invoke_and_wait("name", child_workflow, payload)
+
+# Batch invoke (parallel, fire-and-forget)
+handles = await ctx.step.batch_invoke("name", [BatchWorkflowInput(...), ...])
+
+# Batch invoke and wait (parallel, wait for all)
+results = await ctx.step.batch_invoke_and_wait("name", [BatchWorkflowInput(...), ...])
+```
+
+## Agent Invocation from Workflows
+
+```python
+# Invoke agent from workflow (fire-and-forget)
+handle = await ctx.step.agent_invoke("name", agent.with_input("prompt"))
+
+# Invoke agent and wait
+result = await ctx.step.agent_invoke_and_wait("name", agent.with_input("prompt"))
+
+# Batch invoke agents (parallel, fire-and-forget)
+handles = await ctx.step.batch_agent_invoke("name", [agent1.with_input(...), ...])
+
+# Batch invoke agents and wait (parallel, wait for all)
+results = await ctx.step.batch_agent_invoke_and_wait("name", [agent1.with_input(...), ...])
+```
+
+## Setup
+
+```python
+from polos import PolosClient, Worker, Agent, workflow
+
+client = PolosClient(project_id="your-project-id")
+
+agent = Agent(
+    id="my_agent",
+    provider="openai",  # or "anthropic"
+    model="gpt-4o",
+    system_prompt="You are a helpful assistant.",
+    tools=[my_tool],
+)
+
+worker = Worker(client=client, agents=[agent], workflows=[my_workflow])
+await worker.run()
+```
+
+## Suspend, Resume & Events
+
+```python
+# Suspend for human input (can wait hours/days)
+decision = await ctx.step.suspend("approval", data={"order_id": order.id})
+# decision.data contains the resume payload (dict)
+
+# Wait for an external event
+event = await ctx.step.wait_for_event("wait_pickup", topic=f"warehouse.pickup/{order.id}")
+
+# Event-triggered workflow
+@workflow(trigger_on_event="order/new")
+async def handle_order(ctx: WorkflowContext, order: OrderInput):
+    ...
+
+# Scheduled workflow
+@workflow(schedule="0 9 * * *")  # daily at 9am
+async def daily_report(ctx: WorkflowContext, payload: SchedulePayload):
+    ...
+```
+
+## Concurrency Control
+
+```python
+@workflow(queue={"concurrency_limit": 3})
+async def rate_limited_workflow(ctx: WorkflowContext, input: MyInput):
+    ...
+```
+
+## Documentation
+
+- [Quickstart](/quickstart): Build your first agent
+- [Agents Overview](/agents/overview): Tools, streaming, structured output
+- [Workflows Overview](/workflows/overview): Steps, state, child workflows
+- [Cookbook](/guides/cookbook-examples): Practical code examples
+
+## Optional
+
+- [API Reference](/api-reference/introduction)
+- [GitHub](https://github.com/polos-dev/polos)
+- [Discord](https://discord.gg/ZAxHKMPwFG)

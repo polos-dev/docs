@@ -89,7 +89,8 @@
               "guides/13-parallel-workflows",
               "guides/14-multi-agent-review",
               "guides/15-event-triggered",
-              "guides/16-scheduled-workflows"
+              "guides/16-scheduled-workflows",
+              "guides/17-order-processing"
             ]
           },
           {

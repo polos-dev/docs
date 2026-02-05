@@ -1,0 +1,142 @@
+---
+title: "17 - Order Processing"
+description: "Order processing agent with structured output and fraud review"
+---
+
+A complete order processing workflow combining structured output, conditional logic, and human-in-the-loop approval.
+
+## Define structured output schema
+
+```python
+from pydantic import BaseModel, Field
+
+class ActionDetails(BaseModel):
+    charge_id: str | None = None
+    amount: float | None = None
+    email_sent_to: str | None = None
+
+class OrderAgentOutput(BaseModel):
+    action: str = Field(description="Action taken: 'charge' or 'email'")
+    action_details: ActionDetails
+    action_requested: str | None = Field(
+        default=None,
+        description="'fraud_review' for amounts over $1000, or None"
+    )
+    status_message: str
+```
+
+## Create the order agent
+
+```python
+from polos import Agent, tool, WorkflowContext
+
+@tool(description="Charge a customer using Stripe")
+async def charge_stripe(ctx: WorkflowContext, input: ChargeInput) -> ChargeOutput:
+    # Process payment
+    return ChargeOutput(charge_id="ch_123", status="succeeded", amount=input.amount)
+
+@tool(description="Send order confirmation email")
+async def send_confirmation_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
+    return EmailOutput(sent=True, message_id="msg_123")
+
+order_agent = Agent(
+    id="order_agent",
+    provider="openai",
+    model="gpt-4o-mini",
+    system_prompt="""You are an order processing assistant.
+
+RULES:
+1. When asked to process a payment, use charge_stripe first
+2. After charging:
+   - If amount > $1000: Set action_requested='fraud_review' (DO NOT send email)
+   - If amount <= $1000: Immediately send confirmation email
+3. After fraud approval: Send the confirmation email""",
+    tools=[charge_stripe, send_confirmation_email],
+    output_schema=OrderAgentOutput,
+)
+```
+
+## Build the workflow
+
+```python
+from polos import workflow, WorkflowContext
+
+@workflow(id="order_processing")
+async def order_processing(ctx: WorkflowContext, payload: OrderPayload) -> OrderResult:
+    # Step 1: Process payment
+    result = await ctx.step.agent_invoke_and_wait(
+        "start_order",
+        order_agent.with_input(
+            f"Process payment for order {payload.order_id}. "
+            f"Charge customer {payload.customer_id} for ${payload.amount:.2f}."
+        )
+    )
+
+    output: OrderAgentOutput = result.result
+    charge_id = output.action_details.charge_id
+
+    # Step 2: Check if fraud review is requested
+    if output.action_requested == "fraud_review":
+        # Suspend for human review (up to 24 hours)
+        resume_data = await ctx.step.suspend(
+            "fraud_review",
+            data={
+                "order_id": payload.order_id,
+                "amount": payload.amount,
+                "charge_id": charge_id,
+                "message": "Please review this order for fraud",
+            },
+            timeout=86400,
+        )
+
+        if not resume_data.get("data", {}).get("approved", False):
+            return OrderResult(status="rejected", charge_id=charge_id)
+
+        # Fraud approved - send confirmation
+        await ctx.step.agent_invoke_and_wait(
+            "send_confirmation",
+            order_agent.with_input(
+                f"Fraud review APPROVED for order {payload.order_id}. "
+                f"Send confirmation email to {payload.customer_email}."
+            )
+        )
+
+        return OrderResult(
+            status="completed",
+            charge_id=charge_id,
+            fraud_review_required=True,
+            fraud_approved=True,
+        )
+
+    # No fraud review needed - agent already sent confirmation
+    return OrderResult(status="completed", charge_id=charge_id)
+```
+
+## Flow summary
+
+**Amount $1000 or less:**
+1. Agent charges customer via Stripe
+2. Agent immediately sends confirmation email
+3. Workflow completes
+
+**Amount over $1000:**
+1. Agent charges customer via Stripe
+2. Agent returns `action_requested: "fraud_review"`
+3. Workflow suspends for human review
+4. If approved: Agent sends confirmation email
+5. If rejected: Order cancelled
+
+## Run it
+
+```bash
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/17-order-processing
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/17-order-processing)
