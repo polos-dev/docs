@@ -26,8 +26,7 @@ Lifecycle events are emitted automatically during workflow execution:
 Listen to events for a specific workflow execution:
 
 ```python
-from polos import workflow, WorkflowContext, PolosClient
-from polos.features.events import stream_workflow
+from polos import workflow, WorkflowContext, PolosClient, events
 
 @workflow
 async def data_pipeline(ctx: WorkflowContext, input: PipelineInput):
@@ -44,15 +43,15 @@ handle = await data_pipeline.invoke(
 )
 
 # Stream events
-async for event in stream_workflow(workflow_run_id=handle.id):
+async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
     if event.event_type == "step_start":
-        print(f"⏳ Step started: {event.data.get('step_key')}")
-    
+        print(f"Step started: {event.data.get('step_key')}")
+
     elif event.event_type == "step_finish":
-        print(f"✅ Step finished: {event.data.get('step_key')}")
-    
+        print(f"Step finished: {event.data.get('step_key')}")
+
     elif event.event_type == "workflow_finish":
-        print(f"🎉 Workflow completed")
+        print(f"Workflow completed")
 ```
 
 ## Event structure
@@ -109,16 +108,16 @@ frontend via Websocket:
 ```python
 from polos import events, PolosClient
 
-async def stream_to_websocket(client: PolosClient, execution_id: str, websocket):
+async def stream_to_websocket(client: PolosClient, root_workflow_id: str, execution_id: str, websocket):
     """Stream workflow events to WebSocket client."""
-    async for event in events.stream_workflow(client, workflow_run_id=execution_id):
+    async for event in events.stream_workflow(client, root_workflow_id, execution_id):
         # Send event to frontend
         await websocket.send_json({
             "type": event.event_type,
             "data": event.data,
             "timestamp": event.created_at
         })
-        
+
         # Stop streaming when workflow completes
         if event.event_type == "workflow_finish" and event.data["metadata"]["execution_id"] == execution_id:
             break

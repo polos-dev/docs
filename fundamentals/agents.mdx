@@ -263,17 +263,16 @@ async def approval_workflow(ctx: WorkflowContext, input: dict):
         "generate_plan",
         planning_agent.with_input(input.task)
     )
-    
+
     # Suspend the workflow and wait for human approval
-    decision = await ctx.step.suspend(
-        step_key="suspend_step",
+    resume_data = await ctx.step.suspend(
+        "suspend_step",
         data={"plan": plan}
     )
 
-    # Suspend waits for an event with event_type="resume" to be received
-    # on topic f"{step_key}/{execution_id}".
-    # Resumes here when the decision is received.
-    if decision.data["approved"]:
+    # Resumes here when the decision is received
+    decision = resume_data.get("data", {})
+    if decision.get("approved"):
         # Execute the approved plan
         result = await ctx.step.agent_invoke_and_wait(
             "execute", executor_agent.with_input(plan)

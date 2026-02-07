@@ -186,7 +186,7 @@ import json
 client = PolosClient()
 
 # Start the agent - non-streaming
-execution_handle = await weather_agent.invoke(
+handle = await weather_agent.invoke(
     client,
     payload={
         "input": "What is the weather in New York and Mumbai? Compare them.",
@@ -194,19 +194,16 @@ execution_handle = await weather_agent.invoke(
     }
 )
 
-# Get the execution_id from the handle
-execution_id = execution_handle.id
-
 # Listen to events using stream_workflow
-print("📡 Streaming events:\n")
-async for event in events.stream_workflow(client, workflow_run_id=execution_id):
+print("Streaming events:\n")
+async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
     if event.event_type == "step_start":
-        print(f"\n\nStep started: {event.data.get("step_key")}")
+        print(f"\n\nStep started: {event.data.get('step_key')}")
     elif event.event_type == "step_finish":
         # Print the result of the step
-        print(f"\n\nStep finished: {json.dumps(event.data.get("data", {}).get("result", {}), indent=2)}")
+        print(f"\n\nStep finished: {json.dumps(event.data.get('data', {}).get('result', {}), indent=2)}")
     elif event.event_type == "agent_finish":
-        print(f"\n\nAgent finished")
+        print("\n\nAgent finished")
 ```
 
 ## Building UIs with streaming

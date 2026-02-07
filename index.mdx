@@ -39,7 +39,7 @@ async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
     # High-value orders need approval
     if order.amount > 1000:
         # Suspend execution until the order is approved or rejected
-        decision = await ctx.step.suspend(
+        resume_data = await ctx.step.suspend(
             "approval",
             data={
                 "id": order.id,
@@ -48,10 +48,11 @@ async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
                 "user": order.user
             }
         )
-        if not decision.data["approved"]:
+        decision = resume_data.get("data", {})
+        if not decision.get("approved"):
             return ProcessOrderOutput(
                 status="rejected",
-                reason=decision.data.get("reason")
+                reason=decision.get("reason")
             )
     
     # Charge customer (exactly-once guarantee)
@@ -110,8 +111,9 @@ Polos handles failures, rescheduling, and checkpointing. You just focus on busin
 async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
     # Just write Python
     if order.amount > 1000:
-        approved = await ctx.step.suspend("approval", data=order.model_dump())
-        if not approved.data["ok"]:
+        resume_data = await ctx.step.suspend("approval", data=order.model_dump())
+        decision = resume_data.get("data", {})
+        if not decision.get("ok"):
             return {"status": "rejected"}
     
     await ctx.step.run("charge", charge_stripe, order)

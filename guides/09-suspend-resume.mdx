@@ -8,51 +8,101 @@ Suspend workflows to wait for external input like human approvals.
 ## Approval workflow
 
 ```python
+from pydantic import BaseModel
 from polos import workflow, WorkflowContext
 
+class ApprovalRequest(BaseModel):
+    request_id: str
+    requester: str
+    description: str
+    amount: float
+
 @workflow(id="approval_workflow")
-async def approval_workflow(ctx: WorkflowContext, payload: ApprovalRequest):
+async def approval_workflow(ctx: WorkflowContext, payload: ApprovalRequest) -> ApprovalResult:
     # Prepare request
-    await ctx.step.run("prepare", prepare_request, payload)
+    await ctx.step.run(
+        "prepare_request",
+        lambda: {"prepared": True, "request_id": payload.request_id},
+    )
 
     # Suspend and wait for approval (up to 24 hours)
     resume_data = await ctx.step.suspend(
         "await_approval",
         data={
             "request_id": payload.request_id,
+            "requester": payload.requester,
+            "description": payload.description,
             "amount": payload.amount,
-            "message": "Please approve this request",
+            "message": "Please review and approve/reject this request",
         },
         timeout=86400,
     )
 
-    # Process decision
-    decision = resume_data.get("data", {})
-    if decision.get("approved"):
-        await ctx.step.run("process_approval", process_approved, payload)
-        return {"status": "approved"}
+    # Process decision from resume data
+    decision = ApprovalDecision.model_validate(resume_data.get("data", {}))
+    if decision.approved:
+        await ctx.step.run(
+            "process_approval",
+            lambda: {"action": "approved", "request_id": payload.request_id},
+        )
+        return ApprovalResult(status="approved", approved=True, approver=decision.approver)
     else:
-        return {"status": "rejected", "reason": decision.get("reason")}
+        return ApprovalResult(status="rejected", approved=False, comments=decision.comments)
 ```
 
 ## Multi-step form
 
+Chain multiple suspend/resume steps to collect data across stages:
+
 ```python
 @workflow(id="multi_step_form")
-async def multi_step_form(ctx: WorkflowContext, payload):
+async def multi_step_form(ctx: WorkflowContext, payload: MultiStepFormPayload) -> MultiStepFormResult:
     # Step 1: Collect personal info
-    step1 = await ctx.step.suspend("personal_info", data={
-        "step": 1,
-        "fields": ["first_name", "last_name", "email"],
-    })
+    step1_data = await ctx.step.suspend(
+        "personal_info",
+        data={
+            "form_id": payload.form_id,
+            "step": 1,
+            "total_steps": 3,
+            "prompt": "Please provide your personal information",
+            "fields": ["first_name", "last_name", "email"],
+        },
+    )
+    personal_info = PersonalInfo.model_validate(step1_data.get("data", {}))
 
     # Step 2: Collect address
-    step2 = await ctx.step.suspend("address_info", data={
-        "step": 2,
-        "fields": ["street", "city", "country"],
-    })
+    step2_data = await ctx.step.suspend(
+        "address_info",
+        data={
+            "form_id": payload.form_id,
+            "step": 2,
+            "total_steps": 3,
+            "prompt": "Please provide your address",
+            "fields": ["street", "city", "country"],
+        },
+    )
+    address_info = AddressInfo.model_validate(step2_data.get("data", {}))
 
-    return {"personal": step1["data"], "address": step2["data"]}
+    # Step 3: Collect preferences
+    step3_data = await ctx.step.suspend(
+        "preferences",
+        data={
+            "form_id": payload.form_id,
+            "step": 3,
+            "total_steps": 3,
+            "prompt": "Please select your preferences",
+            "fields": ["newsletter", "notifications"],
+        },
+    )
+    preferences = Preferences.model_validate(step3_data.get("data", {}))
+
+    return MultiStepFormResult(
+        form_id=payload.form_id,
+        status="completed",
+        personal_info=personal_info,
+        address_info=address_info,
+        preferences=preferences,
+    )
 ```
 
 ## Run it

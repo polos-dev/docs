@@ -330,7 +330,7 @@ async def manual_approval(ctx: WorkflowContext, input: dict):
     action = await ctx.step.run("prepare", prepare_action, input)
     
     # Suspend with context data
-    approval = await ctx.step.suspend(
+    resume_data = await ctx.step.suspend(
         "approval",
         data={
             "action": action.description,
@@ -338,9 +338,10 @@ async def manual_approval(ctx: WorkflowContext, input: dict):
         },
         timeout=3600  # 1 hour timeout
     )
-    
+
     # Resume with approval decision
-    if approval.data["approved"]:
+    decision = resume_data.get("data", {})
+    if decision.get("approved"):
         await ctx.step.run("execute", execute_action, action)
 ```
 

@@ -44,12 +44,12 @@ async def approval_workflow(ctx: WorkflowContext, input: ApprovalWorkflowInput):
         "create_plan",
         planning_agent.with_input(f"Create an action plan for: {input.request}")
     )
-    
+
     plan = plan_response.result  # ActionPlan (structured output)
-    
+
     # Step 2: Suspend and wait for approval
-    approval = await ctx.step.suspend(
-        step_key="wait_for_approval",
+    resume_data = await ctx.step.suspend(
+        "wait_for_approval",
         data={
             "description": plan.description,
             "steps": plan.steps,
@@ -59,9 +59,10 @@ async def approval_workflow(ctx: WorkflowContext, input: ApprovalWorkflowInput):
         },
         timeout=3600  # 1 hour timeout
     )
-    
+
     # Step 3: Resumes here when approval event is received. Execute if approved.
-    if approval.data.get("approved"):
+    decision = resume_data.get("data", {})
+    if decision.get("approved"):
         result = await ctx.step.run(
             "execute_plan",
             execute_action,
@@ -69,7 +70,7 @@ async def approval_workflow(ctx: WorkflowContext, input: ApprovalWorkflowInput):
         )
         return ApprovalWorkflowOutput(status="completed", result=result)
     else:
-        return ApprovalWorkflowOutput(status="rejected", rejection_reason=approval_data.get("reason"))
+        return ApprovalWorkflowOutput(status="rejected", rejection_reason=decision.get("reason"))
 ```
 
 **What happens:**
@@ -105,36 +106,33 @@ When a workflow suspends, Polos emits an event to a topic specific to that suspe
 
 ## Listening for suspend events
 
-Listen to the suspend topic to know when workflows need attention:
+Stream workflow events to detect when a workflow suspends:
 
 ```python
 import asyncio
-from polos import events, PolosClient
+from polos import PolosClient, events
 
 async def main():
     client = PolosClient()
 
     # Start the workflow
-    handle = await approval_workflow.invoke(client, {
-        "request": "delete old customer records from archive"
-    })
-    
+    handle = await approval_workflow.invoke(client, ApprovalWorkflowInput(
+        request="delete old customer records from archive"
+    ))
+
     print(f"Workflow started: {handle.id}")
     print("Waiting for approval...")
-    
-    # Build the suspend topic
-    suspend_step_key = "wait_for_approval"
-    suspend_topic = f"{suspend_step_key}/{handle.id}"
-    
-    # Listen for suspend event
-    async for event in events.stream_topic(suspend_topic):
-        if event.event_type == "suspend":
+
+    # Stream events from the workflow to detect suspension
+    async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+        if event.event_type.startswith("suspend_"):
+            suspend_data = event.data
             print("Workflow suspended, awaiting approval:")
-            print(f"  Description: {event.data['description']}")
-            print(f"  Steps: {', '.join(event.data['steps'])}")
-            print(f"  Cost: ${event.data['estimated_cost']}")
-            print(f"  Risk: {event.data['risk_level']}")
-            print(f"  Approver: {event.data['requires_approval_from']}")
+            print(f"  Description: {suspend_data['description']}")
+            print(f"  Steps: {', '.join(suspend_data['steps'])}")
+            print(f"  Cost: ${suspend_data['estimated_cost']}")
+            print(f"  Risk: {suspend_data['risk_level']}")
+            print(f"  Approver: {suspend_data['requires_approval_from']}")
             break
 
 if __name__ == "__main__":
@@ -154,8 +152,9 @@ async def approve_workflow():
 
     # Resume with approval
     await client.resume(
-        suspend_execution_id="abc-123-def-456",  # Workflow execution ID
-        suspend_step_key="wait_for_approval",     # Step key from suspend()
+        suspend_workflow_id="wf-abc-123",          # Root workflow ID
+        suspend_execution_id="abc-123-def-456",    # Workflow execution ID
+        suspend_step_key="wait_for_approval",      # Step key from suspend()
         data={
             "approved": True,
             "approved_by": "alice@company.com",
@@ -176,6 +175,7 @@ import asyncio
 from polos import workflow, WorkflowContext, events, PolosClient
 from datetime import datetime
 from pydantic import BaseModel
+from typing import Optional
 
 class ChargeRequest(BaseModel):
     customer_id: str
@@ -196,14 +196,14 @@ async def charge_customer_workflow(ctx: WorkflowContext, input: ChargeRequest):
         validate_charge_request,
         input
     )
-    
+
     if not validation.is_valid:
-        return ChargeResponse(status=status, reason=validation.error)
-    
+        return ChargeResponse(status="invalid", reason=validation.error)
+
     # For charges over $1000, require approval
     if input.amount > 1000:
-        approval = await ctx.step.suspend(
-            step_key="high_value_approval",
+        resume_data = await ctx.step.suspend(
+            "high_value_approval",
             data={
                 "customer_id": input.customer_id,
                 "amount": input.amount,
@@ -212,20 +212,21 @@ async def charge_customer_workflow(ctx: WorkflowContext, input: ChargeRequest):
             },
             timeout=7200  # 2 hours
         )
-        
-        if not approval.data.get("approved"):
+
+        decision = resume_data.get("data", {})
+        if not decision.get("approved"):
             return ChargeResponse(
-                status=status,
-                reason=approval.get("reason", "Not approved")
+                status="rejected",
+                reason=decision.get("reason", "Not approved")
             )
-    
+
     # Execute the charge
     charge_result = await ctx.step.run(
         "execute_charge",
         charge_stripe,
         input
     )
-    
+
     # Send confirmation
     await ctx.step.run(
         "send_confirmation",
@@ -233,7 +234,7 @@ async def charge_customer_workflow(ctx: WorkflowContext, input: ChargeRequest):
         customer_id=input.customer_id,
         charge_id=charge_result.charge_id
     )
-    
+
     return ChargeResponse(
         status="completed",
         charge_id=charge_result.charge_id,
@@ -251,37 +252,36 @@ async def main():
             amount=5000.00,
             description="Enterprise annual subscription"
         ))
-    
+
     print(f"Charge workflow started: {handle.id}")
-    
-    # Listen for approval request
-    suspend_topic = f"high_value_approval/{handle.id}"
-    
-    async for event in events.stream_topic(suspend_topic):
-        if event.event_type == "suspend":
-            print("\n⚠️  High-value charge requires approval:")
-            print(f"   Customer: {event.data['customer_id']}")
-            print(f"   Amount: ${event.data['amount']}")
-            print(f"   Description: {event.data['description']}")
-            
+
+    # Stream events from the workflow to detect suspension
+    async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+        if event.event_type.startswith("suspend_"):
+            suspend_data = event.data
+            print("\nHigh-value charge requires approval:")
+            print(f"   Customer: {suspend_data['customer_id']}")
+            print(f"   Amount: ${suspend_data['amount']}")
+            print(f"   Description: {suspend_data['description']}")
+
             # Send Slack notification with approval URL
             approval_url = f"https://admin.example.com/approve/{handle.id}"
             await send_slack_message(
                 channel="#financial-approvals",
-                message=f"High-value charge requires approval: ${event.data['amount']}",
+                message=f"High-value charge requires approval: ${suspend_data['amount']}",
                 blocks=[{
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Charge Approval Required*\nAmount: ${event.data['amount']}\nCustomer: {event.data['customer_id']}\n<{approval_url}|Approve or Reject>"
+                        "text": f"*Charge Approval Required*\nAmount: ${suspend_data['amount']}\nCustomer: {suspend_data['customer_id']}\n<{approval_url}|Approve or Reject>"
                     }
                 }]
             )
             break
-    
+
     # Wait for workflow completion
     result = await handle.result()
-    print(f"\n✅ Charge completed: {result.charge_id}")
+    print(f"\nCharge completed: {result.charge_id}")
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -320,8 +320,8 @@ Suspensions can have timeouts to prevent workflows from waiting indefinitely:
 
 ```python
 try:
-    approval = await ctx.step.suspend(
-        step_key="approval",
+    resume_data = await ctx.step.suspend(
+        "approval",
         data={"request": "delete records"},
         timeout=3600  # 1 hour in seconds
     )
@@ -340,24 +340,26 @@ Handle multi-stage approvals:
 @workflow
 async def multi_approval_workflow(ctx: WorkflowContext, input: MultiApprovalInput):
     # Stage 1: Manager approval
-    manager_approval = await ctx.step.suspend(
-        step_key="manager_approval",
+    manager_data = await ctx.step.suspend(
+        "manager_approval",
         data={"stage": "manager", "amount": input.amount}
     )
-    
-    if not manager_approval.data.get("approved"):
+
+    manager_decision = manager_data.get("data", {})
+    if not manager_decision.get("approved"):
         return MultiApprovalOutput(status="rejected_by_manager")
-    
+
     # Stage 2: Finance approval (for large amounts)
     if input.amount > 10000:
-        finance_approval = await ctx.step.suspend(
-            step_key="finance_approval",
+        finance_data = await ctx.step.suspend(
+            "finance_approval",
             data={"stage": "finance", "amount": input.amount}
         )
-        
-        if not finance_approval.data.get("approved"):
+
+        finance_decision = finance_data.get("data", {})
+        if not finance_decision.get("approved"):
             return MultiApprovalOutput(status="rejected_by_finance")
-    
+
     # Execute action
     result = await ctx.step.run("execute", execute_action, input)
     return MultiApprovalOutput(status="completed", result=result)
@@ -367,8 +369,8 @@ async def multi_approval_workflow(ctx: WorkflowContext, input: MultiApprovalInpu
 
 - `ctx.step.suspend()` pauses workflow execution and waits for external input
 - **No compute consumed while suspended** — workflows can wait hours or days
-- Suspend events emitted to `{step_key}/{execution_id}` topic
-- Resume with `resume()` providing execution ID, step key, and decision data
+- Detect suspension by streaming workflow events with `events.stream_workflow()`
+- Resume with `client.resume()` providing workflow ID, execution ID, step key, and decision data
 - Use timeouts to prevent indefinite waiting
 - Build approval UIs by listening to suspend events and calling resume API
 - Multi-stage approvals supported with multiple suspend steps

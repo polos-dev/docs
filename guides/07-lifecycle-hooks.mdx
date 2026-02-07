@@ -19,21 +19,39 @@ Add hooks to log, validate, or modify agent execution at specific points.
 ## Define hooks
 
 ```python
-async def log_start(ctx, input):
-    print(f"Agent starting with: {input[:50]}...")
+from polos import hook, WorkflowContext, HookContext, HookResult
 
-async def log_end(ctx, result):
-    print(f"Agent completed: {result.status}")
+@hook
+def log_start(ctx: WorkflowContext, hook_ctx: HookContext) -> HookResult:
+    """Log when agent execution starts."""
+    print(f"Agent started - workflow: {hook_ctx.workflow_id}")
+    return HookResult.continue_with()
 
-async def validate_input(ctx, input):
-    if len(input) > 10000:
-        raise ValueError("Input too long")
+@hook
+def log_end(ctx: WorkflowContext, hook_ctx: HookContext) -> HookResult:
+    """Log when agent execution ends."""
+    print(f"Agent completed - workflow: {hook_ctx.workflow_id}")
+    return HookResult.continue_with()
+
+@hook
+def validate_input(ctx: WorkflowContext, hook_ctx: HookContext) -> HookResult:
+    """Validate input before agent execution starts."""
+    payload = hook_ctx.current_payload or {}
+    prompt = payload.get("prompt", "")
+
+    if not prompt or not prompt.strip():
+        return HookResult.fail("Empty prompt not allowed")
+
+    if len(prompt) > 10000:
+        return HookResult.fail("Prompt too long (max 10000 characters)")
+
+    return HookResult.continue_with()
 ```
 
 ## Attach hooks to agent
 
 ```python
-from polos import Agent
+from polos import Agent, max_steps, MaxStepsConfig
 
 logged_agent = Agent(
     id="logged_agent",
@@ -43,8 +61,13 @@ logged_agent = Agent(
     tools=[search, calculate],
     on_start=[validate_input, log_start],
     on_end=[log_end],
+    on_agent_step_start=[log_step_start],
+    on_agent_step_end=[log_step_end],
     on_tool_start=[log_tool_start],
     on_tool_end=[log_tool_end],
+    stop_conditions=[
+        max_steps(MaxStepsConfig(limit=5)),
+    ],
 )
 ```
 
