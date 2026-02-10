@@ -7,7 +7,9 @@ Coordinate multiple specialized agents to review and refine content.
 
 ## Define specialist agents
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent
 
 grammar_agent = Agent(
@@ -32,9 +34,39 @@ editor_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const grammarReviewAgent = defineAgent({
+  id: 'grammar_reviewer',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'Review text for grammar, spelling, and punctuation.',
+  stopConditions: [maxSteps({ count: 3 })],
+});
+
+const toneConsistencyAgent = defineAgent({
+  id: 'tone_reviewer',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'Review text for tone consistency and style.',
+  stopConditions: [maxSteps({ count: 3 })],
+});
+
+const finalEditorAgent = defineAgent({
+  id: 'final_editor',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'Produce a polished version incorporating all feedback.',
+  stopConditions: [maxSteps({ count: 3 })],
+});
+```
+
+</CodeGroup>
+
 ## Run agents in parallel
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow(id="blog_review")
@@ -67,9 +99,46 @@ Produce the final polished version.""")
     return {"final_text": final.result}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const blogReview = defineWorkflow<BlogReviewPayload, unknown, BlogReviewResult>(
+  { id: 'blog_review' },
+  async (ctx, payload) => {
+    const text = payload.text;
+
+    // Run all reviews in parallel
+    const reviewResults = await ctx.step.batchAgentInvokeAndWait<Record<string, unknown>>(
+      'parallel_reviews',
+      [
+        grammarReviewAgent.withInput(`Review for grammar:\n\n${text}`),
+        toneConsistencyAgent.withInput(`Review for tone:\n\n${text}`),
+      ],
+    );
+
+    const grammarFeedback = (reviewResults[0]?.['result'] as string) ?? '';
+    const toneFeedback = (reviewResults[1]?.['result'] as string) ?? '';
+
+    // Final edit with all feedback
+    const editorResult = (await ctx.step.agentInvokeAndWait(
+      'final_editor',
+      finalEditorAgent.withInput(
+        `Original: ${text}\n\nGrammar feedback: ${grammarFeedback}\nTone feedback: ${toneFeedback}\n\nProduce the final polished version.`,
+      ),
+    )) as Record<string, unknown>;
+
+    return { originalText: text, grammarReview: grammarFeedback, toneReview: toneFeedback, finalText: (editorResult['result'] as string) ?? '' };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/14-router-coordinator
 cp .env.example .env
@@ -78,6 +147,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/14-router-coordinator
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/14-router-coordinator)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/14-router-coordinator) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/14-router-coordinator)

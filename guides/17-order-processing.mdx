@@ -7,7 +7,9 @@ A complete order processing workflow combining structured output, conditional lo
 
 ## Define structured output schema
 
-```python
+<CodeGroup>
+
+```python Python
 from pydantic import BaseModel, Field
 
 class ActionDetails(BaseModel):
@@ -25,9 +27,35 @@ class OrderAgentOutput(BaseModel):
     status_message: str
 ```
 
+```typescript TypeScript
+import { z } from 'zod';
+
+const actionDetailsSchema = z.object({
+  charge_id: z.string().nullable().default(null),
+  amount: z.number().nullable().default(null),
+  email_sent_to: z.string().nullable().default(null),
+  message_id: z.string().nullable().default(null),
+});
+
+const orderAgentOutputSchema = z.object({
+  action: z.string().describe("Action taken: 'charge', 'email', or 'complete'"),
+  action_details: actionDetailsSchema,
+  action_requested: z.string().nullable().default(null).describe(
+    "'fraud_review' for amounts over $1000, or null",
+  ),
+  status_message: z.string(),
+});
+
+type OrderAgentOutput = z.infer<typeof orderAgentOutputSchema>;
+```
+
+</CodeGroup>
+
 ## Create the order agent
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, tool, WorkflowContext
 
 @tool(description="Charge a customer using Stripe")
@@ -56,9 +84,35 @@ RULES:
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+import { chargeStripe, sendConfirmationEmail } from './tools.js';
+
+const orderAgent = defineAgent({
+  id: 'order_agent',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: `You are an order processing assistant.
+
+RULES:
+1. When asked to process a payment, use charge_stripe first
+2. After charging:
+   - If amount > $1000: Set action_requested='fraud_review' (DO NOT send email)
+   - If amount <= $1000: Immediately send confirmation email
+3. After fraud approval: Send the confirmation email`,
+  tools: [chargeStripe, sendConfirmationEmail],
+  outputSchema: orderAgentOutputSchema,
+  stopConditions: [maxSteps({ count: 10 })],
+});
+```
+
+</CodeGroup>
+
 ## Build the workflow
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow(id="order_processing")
@@ -112,6 +166,68 @@ async def order_processing(ctx: WorkflowContext, payload: OrderPayload) -> Order
     return OrderResult(status="completed", charge_id=charge_id)
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const orderProcessingWorkflow = defineWorkflow<OrderPayload, unknown, OrderResult>(
+  { id: 'order_processing_workflow' },
+  async (ctx, payload) => {
+    // Step 1: Process payment
+    const result = (await ctx.step.agentInvokeAndWait(
+      'start_order',
+      orderAgent.withInput(
+        `Process payment for order ${payload.orderId}. ` +
+        `Charge customer ${payload.customerId} for $${payload.amount.toFixed(2)} USD.`,
+      ),
+    )) as Record<string, unknown>;
+
+    const output = result['result'] as OrderAgentOutput;
+    const chargeId = output.action_details.charge_id;
+
+    // Step 2: Check if fraud review is requested
+    if (output.action_requested === 'fraud_review') {
+      // Suspend for human review (up to 24 hours)
+      const resumeData = await ctx.step.suspend<Record<string, unknown>, Record<string, unknown>>(
+        'fraud_review',
+        {
+          data: {
+            order_id: payload.orderId,
+            amount: payload.amount,
+            charge_id: chargeId,
+            message: 'Please review this order for fraud',
+          },
+          timeout: 86400,
+        },
+      );
+
+      const fraudApproved = Boolean(
+        (resumeData?.['data'] as Record<string, unknown> | undefined)?.['approved'] ?? false,
+      );
+
+      if (!fraudApproved) {
+        return { orderId: payload.orderId, status: 'rejected', chargeId, fraudReviewRequired: true, fraudApproved: false, emailSent: false };
+      }
+
+      // Fraud approved - send confirmation
+      await ctx.step.agentInvokeAndWait(
+        'send_confirmation',
+        orderAgent.withInput(
+          `Fraud review APPROVED for order ${payload.orderId}. ` +
+          `Send confirmation email to ${payload.customerEmail}.`,
+        ),
+      );
+
+      return { orderId: payload.orderId, status: 'completed', chargeId, fraudReviewRequired: true, fraudApproved: true, emailSent: true };
+    }
+
+    // No fraud review needed - agent already sent confirmation
+    return { orderId: payload.orderId, status: 'completed', chargeId, fraudReviewRequired: false, fraudApproved: null, emailSent: true };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Flow summary
 
 **Amount $1000 or less:**
@@ -128,7 +244,9 @@ async def order_processing(ctx: WorkflowContext, payload: OrderPayload) -> Order
 
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/17-order-processing
 cp .env.example .env
@@ -137,6 +255,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/17-order-processing
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/17-order-processing)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/17-order-processing) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/17-order-processing)

@@ -7,7 +7,9 @@ Use queues to limit concurrent workflow executions.
 
 ## Define queues
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import queue
 
 # Limit concurrent API calls
@@ -20,9 +22,26 @@ db_queue = queue("database-ops", concurrency_limit=10)
 heavy_queue = queue("heavy-processing", concurrency_limit=2)
 ```
 
+```typescript TypeScript
+import { Queue } from '@polos/sdk';
+
+// Limit concurrent API calls
+const apiQueue = new Queue('api-calls', { concurrencyLimit: 5 });
+
+// Limit database connections
+const dbQueue = new Queue('database-ops', { concurrencyLimit: 10 });
+
+// Limit CPU-intensive work
+const heavyQueue = new Queue('heavy-processing', { concurrencyLimit: 2 });
+```
+
+</CodeGroup>
+
 ## Assign workflows to queues
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow(id="api_call", queue=api_queue)
@@ -39,9 +58,51 @@ async def db_write(ctx: WorkflowContext, payload):
     return await ctx.step.run("insert", insert_data, payload)
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const apiCallWorkflow = defineWorkflow<ApiPayload, unknown, ApiResult>(
+  { id: 'api_call', queue: apiQueue },
+  async (ctx, payload) => {
+    const result = await ctx.step.run(
+      'make_request',
+      () => makeApiRequest(payload.url, payload.method ?? 'GET', payload.data),
+    );
+    return { url: payload.url, method: payload.method ?? 'GET', result };
+  },
+);
+
+const dbReadWorkflow = defineWorkflow<DbReadPayload, unknown, Record<string, unknown>>(
+  { id: 'db_read', queue: dbQueue },
+  async (ctx, payload) => {
+    const results = await ctx.step.run(
+      'execute_query',
+      () => executeDbQuery(payload.table, payload.query ?? {}),
+    );
+    return { table: payload.table, results };
+  },
+);
+
+// Multiple workflows can share the same queue
+const dbWriteWorkflow = defineWorkflow<DbWritePayload, unknown, Record<string, unknown>>(
+  { id: 'db_write', queue: dbQueue },
+  async (ctx, payload) => {
+    const inserted = await ctx.step.run(
+      'insert_data',
+      () => insertDbData(payload.table, payload.data),
+    );
+    return { table: payload.table, inserted };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Inline queue config
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="inline_queue", queue={"concurrency_limit": 3})
 async def inline_queue(ctx: WorkflowContext, payload):
     return {"message": "Processed"}
@@ -51,9 +112,29 @@ async def named_queue(ctx: WorkflowContext, payload):
     return {"message": "Processed"}
 ```
 
+```typescript TypeScript
+const inlineQueueWorkflow = defineWorkflow<Record<string, unknown>, unknown, Record<string, unknown>>(
+  { id: 'inline_queue_workflow', queue: { name: 'inline_queue_workflow', concurrencyLimit: 3 } },
+  async () => {
+    return { message: 'Processed with inline queue' };
+  },
+);
+
+const namedQueueWorkflow = defineWorkflow<Record<string, unknown>, unknown, Record<string, unknown>>(
+  { id: 'named_queue_workflow', queue: 'my-named-queue' },
+  async () => {
+    return { message: 'Processed with named queue' };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/12-shared-queues
 cp .env.example .env
@@ -62,6 +143,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/12-shared-queues
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/12-shared-queues)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/12-shared-queues) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/12-shared-queues)

@@ -7,7 +7,9 @@ A simple agent that uses a tool to look up weather information.
 
 ## Define a tool
 
-```python
+<CodeGroup>
+
+```python Python
 from pydantic import BaseModel
 from polos import tool, WorkflowContext
 
@@ -25,9 +27,41 @@ async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutpu
     return WeatherOutput(city=input.city, temperature=72, condition="Sunny")
 ```
 
+```typescript TypeScript
+import { defineTool, type WorkflowContext } from '@polos/sdk';
+import { z } from 'zod';
+
+const weatherInputSchema = z.object({
+  city: z.string(),
+});
+
+const weatherOutputSchema = z.object({
+  city: z.string(),
+  temperature: z.number(),
+  condition: z.string(),
+});
+
+export const getWeather = defineTool(
+  {
+    id: 'get_weather',
+    description: 'Get weather for a city',
+    inputSchema: weatherInputSchema,
+    outputSchema: weatherOutputSchema,
+  },
+  async (_ctx: WorkflowContext, input) => {
+    // In production, call a real weather API
+    return { city: input.city, temperature: 72, condition: 'Sunny' };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Create the agent
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, max_steps, MaxStepsConfig
 
 weather_agent = Agent(
@@ -40,9 +74,27 @@ weather_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+import { getWeather } from './tools.js';
+
+export const weatherAgent = defineAgent({
+  id: 'weather_agent',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'You are a weather assistant. Use the get_weather tool to look up weather.',
+  tools: [getWeather],
+  stopConditions: [maxSteps({ count: 10 })],
+});
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/01-weather-agent
 cp .env.example .env  # Add POLOS_PROJECT_ID and OPENAI_API_KEY
@@ -51,6 +103,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/01-agent-with-tools
+cp .env.example .env  # Add POLOS_PROJECT_ID and OPENAI_API_KEY
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-weather-agent)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-weather-agent) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/01-agent-with-tools)

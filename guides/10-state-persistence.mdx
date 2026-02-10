@@ -7,7 +7,9 @@ Workflows can maintain typed state for the execution.
 
 ## Define a state schema
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import WorkflowState
 
 class ShoppingCartState(WorkflowState):
@@ -15,9 +17,24 @@ class ShoppingCartState(WorkflowState):
     total: float = 0.0
 ```
 
+```typescript TypeScript
+import { z } from 'zod';
+
+const ShoppingCartStateSchema = z.object({
+  items: z.array(z.record(z.unknown())).default([]),
+  total: z.number().default(0),
+});
+
+type ShoppingCartState = z.infer<typeof ShoppingCartStateSchema>;
+```
+
+</CodeGroup>
+
 ## Create a stateful workflow
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow(id="shopping_cart", state_schema=ShoppingCartState)
@@ -40,9 +57,44 @@ async def shopping_cart(ctx: WorkflowContext, payload: CartPayload):
     return {"items": ctx.state.items, "total": ctx.state.total}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const shoppingCartWorkflow = defineWorkflow<CartPayload, ShoppingCartState, CartResult>(
+  { id: 'shopping_cart', stateSchema: ShoppingCartStateSchema },
+  async (ctx, payload) => {
+    if (payload.action === 'add' && payload.item) {
+      ctx.state.items.push({
+        id: payload.item.id,
+        name: payload.item.name,
+        price: payload.item.price,
+        quantity: payload.item.quantity,
+      });
+      ctx.state.total += payload.item.price * payload.item.quantity;
+    } else if (payload.action === 'remove' && payload.itemId) {
+      const idx = ctx.state.items.findIndex((item) => item['id'] === payload.itemId);
+      if (idx >= 0) {
+        const item = ctx.state.items[idx]!;
+        ctx.state.total -= (Number(item['price']) || 0) * (Number(item['quantity']) || 1);
+        ctx.state.items.splice(idx, 1);
+      }
+    } else if (payload.action === 'clear') {
+      ctx.state.items = [];
+      ctx.state.total = 0;
+    }
+
+    return { items: ctx.state.items, total: ctx.state.total };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Initialize with state
 
-```python
+<CodeGroup>
+
+```python Python
 # Start workflow with initial state
 handle = await client.workflows.invoke(
     "shopping_cart",
@@ -51,9 +103,22 @@ handle = await client.workflows.invoke(
 )
 ```
 
+```typescript TypeScript
+// Start workflow with initial state
+const handle = await client.workflows.invoke(
+  'shopping_cart',
+  { action: 'add', item: { /* ... */ } },
+  { initialState: { items: [], total: 0 } },
+);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/10-state-persistence
 cp .env.example .env
@@ -62,6 +127,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/10-state-persistence
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/10-state-persistence)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/10-state-persistence) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/10-state-persistence)

@@ -7,7 +7,9 @@ Run multiple workflows concurrently and aggregate results.
 
 ## Parallel execution with batch_invoke_and_wait
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 from polos.types.types import BatchWorkflowInput
 
@@ -32,9 +34,41 @@ async def parallel_review(ctx: WorkflowContext, payload):
     return {"approved": approved, "total": len(results)}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+import type { BatchWorkflowInput } from '@polos/sdk';
+
+const parallelReview = defineWorkflow<Record<string, unknown>, unknown, AggregatedReview>(
+  { id: 'parallel_review' },
+  async (ctx, payload) => {
+    const reviewers = (payload['reviewers'] as string[]) ?? ['alice', 'bob', 'charlie'];
+
+    // Create batch of review requests
+    const reviewRequests: BatchWorkflowInput[] = reviewers.map((reviewer) => ({
+      workflow: 'single_review',
+      payload: { reviewerId: reviewer, documentId: payload['documentId'] },
+    }));
+
+    // Run all in parallel
+    const results = await ctx.step.batchInvokeAndWait<ReviewResult>(
+      'parallel_reviews',
+      reviewRequests,
+    );
+
+    // Aggregate
+    const approvedCount = results.filter((r) => r.approved).length;
+    return { approved: approvedCount, total: results.length };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Fire-and-forget with batch_invoke
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="launch_background_tasks")
 async def launch_tasks(ctx: WorkflowContext, payload):
     requests = [
@@ -48,9 +82,33 @@ async def launch_tasks(ctx: WorkflowContext, payload):
     return {"launched": len(handles), "ids": [h.id for h in handles]}
 ```
 
+```typescript TypeScript
+const fireAndForgetBatch = defineWorkflow<FireAndForgetPayload, unknown, Record<string, unknown>>(
+  { id: 'fire_and_forget_batch' },
+  async (ctx, payload) => {
+    const taskRequests: BatchWorkflowInput[] = payload.tasks.map((task) => ({
+      workflow: 'background_task',
+      payload: { taskId: task.id, data: task.data },
+    }));
+
+    // Launch without waiting
+    const handles = await ctx.step.batchInvoke(
+      'launch_background_tasks',
+      taskRequests,
+    );
+
+    return { launched: handles.length, executionIds: handles.map((h) => h.executionId) };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Fan-out/fan-in pattern
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="process_chunks")
 async def process_chunks(ctx: WorkflowContext, payload):
     data = payload["data"]
@@ -73,9 +131,46 @@ async def process_chunks(ctx: WorkflowContext, payload):
     return {"total": len(all_processed)}
 ```
 
+```typescript TypeScript
+const dataChunkProcessor = defineWorkflow<ChunkProcessorPayload, unknown, ChunkProcessorResult>(
+  { id: 'data_chunk_processor' },
+  async (ctx, payload) => {
+    const data = payload.data;
+    const chunkSize = payload.chunkSize;
+
+    // Split into chunks
+    const chunks: unknown[][] = [];
+    for (let i = 0; i < data.length; i += chunkSize) {
+      chunks.push(data.slice(i, i + chunkSize));
+    }
+
+    // Process in parallel
+    const chunkRequests: BatchWorkflowInput[] = chunks.map((chunk, i) => ({
+      workflow: 'process_chunk',
+      payload: { chunk, chunkIndex: i },
+    }));
+    const results = await ctx.step.batchInvokeAndWait<ChunkResult>(
+      'parallel_chunks',
+      chunkRequests,
+    );
+
+    // Combine results
+    const allProcessed: unknown[] = [];
+    for (const result of results) {
+      allProcessed.push(...result.processed);
+    }
+    return { totalItems: data.length, chunksProcessed: results.length, processedItems: allProcessed.length, results: allProcessed };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/13-parallel-review
 cp .env.example .env
@@ -84,6 +179,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/13-parallel-review
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/13-parallel-review)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/13-parallel-review) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/13-parallel-review)

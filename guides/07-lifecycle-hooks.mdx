@@ -18,7 +18,9 @@ Add hooks to log, validate, or modify agent execution at specific points.
 
 ## Define hooks
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import hook, WorkflowContext, HookContext, HookResult
 
 @hook
@@ -48,9 +50,50 @@ def validate_input(ctx: WorkflowContext, hook_ctx: HookContext) -> HookResult:
     return HookResult.continue_with()
 ```
 
+```typescript TypeScript
+import { defineHook, HookResult } from '@polos/sdk';
+import type { HookResultType } from '@polos/sdk';
+
+export const logStart = defineHook(
+  async (ctx, _hookCtx): Promise<HookResultType> => {
+    console.log(`Agent started - workflow: ${ctx.workflowId}`);
+    return HookResult.continue();
+  },
+  { name: 'log_start' },
+);
+
+export const logEnd = defineHook(
+  async (ctx, _hookCtx): Promise<HookResultType> => {
+    console.log(`Agent completed - workflow: ${ctx.workflowId}`);
+    return HookResult.continue();
+  },
+  { name: 'log_end' },
+);
+
+export const validateInput = defineHook(
+  async (_ctx, hookCtx): Promise<HookResultType> => {
+    const payload = hookCtx.currentPayload as Record<string, unknown> | undefined;
+    const input = String(payload?.['input'] ?? '');
+
+    if (!input || !input.trim()) {
+      return HookResult.fail('Empty input not allowed');
+    }
+    if (input.length > 10000) {
+      return HookResult.fail('Input too long (max 10000 characters)');
+    }
+    return HookResult.continue();
+  },
+  { name: 'validate_input' },
+);
+```
+
+</CodeGroup>
+
 ## Attach hooks to agent
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, max_steps, MaxStepsConfig
 
 logged_agent = Agent(
@@ -71,9 +114,37 @@ logged_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+import { search, calculate } from './tools.js';
+import {
+  logStart, logEnd, logStepStart, logStepEnd,
+  logToolStart, logToolEnd, validateInput,
+} from './hooks.js';
+
+const loggedAgent = defineAgent({
+  id: 'logged_agent',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'You are a helpful assistant.',
+  tools: [search, calculate],
+  onStart: [validateInput, logStart],
+  onEnd: [logEnd],
+  onAgentStepStart: [logStepStart],
+  onAgentStepEnd: [logStepEnd],
+  onToolStart: [logToolStart],
+  onToolEnd: [logToolEnd],
+  stopConditions: [maxSteps({ count: 5 })],
+});
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/07-lifecycle-hooks
 cp .env.example .env
@@ -82,6 +153,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/07-lifecycle-hooks
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/07-lifecycle-hooks)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/07-lifecycle-hooks) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/07-lifecycle-hooks)

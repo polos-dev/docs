@@ -7,7 +7,9 @@ Workflows that run automatically when events are published.
 
 ## Trigger on event
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext, EventPayload
 
 @workflow(id="on_order_created", trigger_on_event="orders/created")
@@ -19,9 +21,35 @@ async def on_order_created(ctx: WorkflowContext, payload: EventPayload):
     return {"order_id": order["order_id"], "status": "processed"}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+import type { EventPayload } from '@polos/sdk';
+
+const onOrderCreated = defineWorkflow<EventPayload, unknown, OrderProcessedResult>(
+  {
+    id: 'on_order_created',
+    triggerOnEvent: 'orders/created',
+  },
+  async (ctx, payload) => {
+    const orderData = payload.data;
+    const orderId = (orderData['order_id'] as string) ?? 'unknown';
+
+    await ctx.step.run('validate_order', () => ({ valid: true, orderId }));
+    await ctx.step.run('reserve_inventory', () => ({ reserved: true }));
+    await ctx.step.run('send_confirmation', () => ({ sent: true }));
+
+    return { orderId, status: 'processed' };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Batch events
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import BatchEventPayload
 
 @workflow(
@@ -37,9 +65,38 @@ async def batch_processor(ctx: WorkflowContext, payload: BatchEventPayload):
     return {"processed": len(payload.events)}
 ```
 
+```typescript TypeScript
+import type { BatchEventPayload } from '@polos/sdk';
+
+const batchProcessor = defineWorkflow<BatchEventPayload, unknown, BatchProcessResult>(
+  {
+    id: 'batch_processor',
+    triggerOnEvent: 'data/updates',
+    batchSize: 10,
+    batchTimeoutSeconds: 30,
+  },
+  async (ctx, payload) => {
+    // Receives up to 10 events at once, or triggers after 30s
+    const processed: Record<string, unknown>[] = [];
+    for (const event of payload.events) {
+      const result = await ctx.step.run(
+        `process_event_${String(event.sequenceId)}`,
+        () => processEventData(event.data),
+      );
+      processed.push(result);
+    }
+    return { batchSize: payload.events.length, processed };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Publish events
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="order_pipeline")
 async def order_pipeline(ctx: WorkflowContext, payload):
     # Publish event to trigger other workflows
@@ -51,9 +108,31 @@ async def order_pipeline(ctx: WorkflowContext, payload):
     return {"published": True}
 ```
 
+```typescript TypeScript
+const eventPublisher = defineWorkflow<PublishEventPayload, unknown, EventPublishedResult>(
+  { id: 'event_publisher' },
+  async (ctx, payload) => {
+    // Publish event to trigger other workflows
+    await ctx.step.publishEvent(
+      'publish_event',
+      {
+        topic: payload.topic,
+        data: payload.eventData,
+        type: payload.eventType,
+      },
+    );
+    return { published: true, topic: payload.topic, eventType: payload.eventType };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Wait for events
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="request_response")
 async def request_response(ctx: WorkflowContext, payload):
     request_id = await ctx.step.uuid("request_id")
@@ -69,9 +148,38 @@ async def request_response(ctx: WorkflowContext, payload):
     return {"response": response.data}
 ```
 
+```typescript TypeScript
+const chainWithEvents = defineWorkflow<ChainPayload, unknown, ChainResult>(
+  { id: 'chain_with_events' },
+  async (ctx, payload) => {
+    const requestId = await ctx.step.uuid('request_id');
+
+    await ctx.step.publishEvent('publish_request', {
+      topic: `requests/${requestId}`,
+      data: { requestId, action: payload.action },
+      type: 'request',
+    });
+
+    // Wait for response event
+    const response = await ctx.step.waitForEvent<EventPayload>(
+      'wait_for_response',
+      {
+        topic: `responses/${requestId}`,
+        timeout: 300,
+      },
+    );
+    return { requestId, response: response.data };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/15-event-triggered
 cp .env.example .env
@@ -80,6 +188,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/15-event-triggered
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/15-event-triggered)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/15-event-triggered) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/15-event-triggered)

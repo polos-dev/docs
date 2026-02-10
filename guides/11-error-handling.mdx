@@ -7,7 +7,9 @@ Patterns for handling errors in workflows.
 
 ## Customize automatic retry
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow(id="retry_example")
@@ -22,9 +24,29 @@ async def retry_example(ctx: WorkflowContext, payload):
     return {"result": result}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const retryExample = defineWorkflow<RetryPayload, unknown, RetryResult>(
+  { id: 'retry_example' },
+  async (ctx, payload) => {
+    const result = await ctx.step.run(
+      'unreliable_op',
+      () => unreliableOperation(payload.failureRate, payload.operation),
+      { maxRetries: 3, baseDelay: 1000, maxDelay: 10000 },
+    );
+    return { status: 'success', result };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Error recovery
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import StepExecutionError
 
 @workflow(id="error_recovery")
@@ -41,9 +63,40 @@ async def error_recovery(ctx: WorkflowContext, payload):
     return {"processed": len(results), "failed": len(errors)}
 ```
 
+```typescript TypeScript
+const errorRecovery = defineWorkflow<ErrorRecoveryPayload, unknown, ErrorRecoveryResult>(
+  { id: 'error_recovery' },
+  async (ctx, payload) => {
+    const results: { item: string; status: string }[] = [];
+    const errors: { item: string; error: string }[] = [];
+
+    for (const item of payload.items) {
+      try {
+        const result = await ctx.step.run(
+          `process_${item}`,
+          () => processItem(item),
+        );
+        results.push(result);
+      } catch (e) {
+        errors.push({
+          item,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    return { processed: results.length, failed: errors.length, results, errors };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Fallback pattern
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="fallback_pattern")
 async def fallback_pattern(ctx: WorkflowContext, payload):
     try:
@@ -52,9 +105,35 @@ async def fallback_pattern(ctx: WorkflowContext, payload):
         return await ctx.step.run("fallback", fallback_process, payload)
 ```
 
+```typescript TypeScript
+const fallbackPattern = defineWorkflow<FallbackPayload, unknown, FallbackResult>(
+  { id: 'fallback_pattern' },
+  async (ctx, payload) => {
+    try {
+      const result = await ctx.step.run(
+        'primary_method',
+        () => primaryProcess(payload.data),
+        { maxRetries: 2 },
+      );
+      return { method: 'primary', result };
+    } catch {
+      const result = await ctx.step.run(
+        'fallback_method',
+        () => fallbackProcess(payload.data),
+      );
+      return { method: 'fallback', result };
+    }
+  },
+);
+```
+
+</CodeGroup>
+
 ## Compensation (rollback)
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="compensation")
 async def compensation(ctx: WorkflowContext, payload):
     completed = []
@@ -71,9 +150,45 @@ async def compensation(ctx: WorkflowContext, payload):
         return {"status": "rolled_back"}
 ```
 
+```typescript TypeScript
+const compensationPattern = defineWorkflow<CompensationPayload, unknown, CompensationResult>(
+  { id: 'compensation_pattern' },
+  async (ctx, payload) => {
+    const completedSteps: string[] = [];
+
+    try {
+      await ctx.step.run('reserve_inventory', () => reserveInventory(payload));
+      completedSteps.push('reserve_inventory');
+
+      await ctx.step.run('charge_payment', () => chargePayment(payload));
+      completedSteps.push('charge_payment');
+
+      return { status: 'success', completed: completedSteps };
+    } catch (e) {
+      // Rollback in reverse order
+      for (const step of [...completedSteps].reverse()) {
+        const compensationFn = getCompensation(step);
+        if (compensationFn) {
+          await ctx.step.run(`compensate_${step}`, () => compensationFn(payload));
+        }
+      }
+      return {
+        status: 'rolled_back',
+        error: e instanceof Error ? e.message : String(e),
+        compensated: [...completedSteps].reverse(),
+      };
+    }
+  },
+);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/11-error-handling
 cp .env.example .env
@@ -82,6 +197,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/11-error-handling
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/11-error-handling)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/11-error-handling) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/11-error-handling)

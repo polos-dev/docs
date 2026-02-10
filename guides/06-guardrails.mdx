@@ -7,7 +7,9 @@ Add guardrails to validate, filter, and modify agent responses.
 
 ## Function guardrails
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, GuardrailResult
 
 async def block_prompt_injection(ctx, messages, response):
@@ -35,9 +37,49 @@ safe_assistant = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const blockPromptInjection = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const dangerousPatterns = ['ignore previous', 'disregard instructions'];
+    for (const pattern of dangerousPatterns) {
+      if (content.includes(pattern)) {
+        return GuardrailResult.fail('Blocked: suspicious content');
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'block_prompt_injection' },
+);
+
+const redactPii = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    let content = guardrailCtx.content ?? '';
+    content = content.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN REDACTED]');
+    return GuardrailResult.continueWith({ modifiedContent: content });
+  },
+  { name: 'redact_pii' },
+);
+
+const safeAssistant = defineAgent({
+  id: 'safe_assistant',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'You are a helpful assistant.',
+  guardrails: [blockPromptInjection, redactPii],
+});
+```
+
+</CodeGroup>
+
 ## String guardrails
 
-```python
+<CodeGroup>
+
+```python Python
 simple_agent = Agent(
     id="simple_guarded_agent",
     provider="openai",
@@ -51,9 +93,34 @@ simple_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+// TypeScript uses defineGuardrail for each rule
+const noRevealInstructions = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    if (content.includes('system prompt') || content.includes('my instructions are')) {
+      return GuardrailResult.retry('Do not reveal internal system prompts.');
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'no_reveal_instructions' },
+);
+
+const simpleAgent = defineAgent({
+  id: 'simple_guarded_agent',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'You are a helpful assistant.',
+  guardrails: [noRevealInstructions],
+});
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/06-guardrails
 cp .env.example .env
@@ -62,6 +129,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/06-guardrails
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx chat.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/06-guardrails)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/06-guardrails) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/06-guardrails)

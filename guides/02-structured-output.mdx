@@ -7,7 +7,9 @@ Get structured, typed responses from agents using Pydantic models.
 
 ## Define a schema
 
-```python
+<CodeGroup>
+
+```python Python
 from pydantic import BaseModel, Field
 
 class MovieReview(BaseModel):
@@ -20,9 +22,29 @@ class MovieReview(BaseModel):
     recommendation: str = Field(description="Who should watch this movie")
 ```
 
+```typescript TypeScript
+import { z } from 'zod';
+
+const movieReviewSchema = z.object({
+  title: z.string().describe('The title of the movie'),
+  rating: z.number().int().min(1).max(10).describe('Rating from 1-10'),
+  genre: z.string().describe("The movie's genre(s)"),
+  summary: z.string().describe('A brief summary of the movie'),
+  pros: z.array(z.string()).describe('List of positive aspects'),
+  cons: z.array(z.string()).describe('List of negative aspects'),
+  recommendation: z.string().describe('Who should watch this movie'),
+});
+
+type MovieReview = z.infer<typeof movieReviewSchema>;
+```
+
+</CodeGroup>
+
 ## Create an agent with the schema
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent
 
 movie_reviewer = Agent(
@@ -34,9 +56,26 @@ movie_reviewer = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const movieReviewer = defineAgent({
+  id: 'movie_reviewer',
+  model: openai('gpt-4o-mini'),
+  systemPrompt: 'You are a professional movie critic. Provide comprehensive reviews.',
+  outputSchema: movieReviewSchema,
+  stopConditions: [maxSteps({ count: 5 })],
+});
+```
+
+</CodeGroup>
+
 ## Get typed responses
 
-```python
+<CodeGroup>
+
+```python Python
 result = await movie_reviewer.run(client, "Review the movie 'The Matrix'")
 
 # result.result is a validated MovieReview instance
@@ -45,9 +84,22 @@ print(result.result.rating)  # 9
 print(result.result.pros)    # ["Innovative visual effects", ...]
 ```
 
+```typescript TypeScript
+const result = await movieReviewer.run(client, {
+  input: "Review the movie 'The Matrix'",
+});
+
+// result.result is a validated MovieReview object
+console.log(result.result);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/02-structured-output
 cp .env.example .env  # Add your POLOS_PROJECT_ID and OPENAI_API_KEY
@@ -56,6 +108,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/02-structured-output
+cp .env.example .env  # Add your POLOS_PROJECT_ID and OPENAI_API_KEY
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/02-structured-output)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/02-structured-output) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/02-structured-output)

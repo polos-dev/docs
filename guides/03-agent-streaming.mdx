@@ -7,7 +7,9 @@ Stream agent responses as they're generated.
 
 ## Stream text chunks
 
-```python
+<CodeGroup>
+
+```python Python
 result = await storyteller.stream(client, "Tell me a story about a robot")
 
 # Iterate over text chunks as they arrive
@@ -15,9 +17,24 @@ async for chunk in result.text_chunks:
     print(chunk, end="", flush=True)
 ```
 
+```typescript TypeScript
+const result = await storyteller.stream(client, {
+  input: 'Tell me a story about a robot',
+});
+
+// Iterate over text chunks as they arrive
+for await (const chunk of result.textChunks) {
+  process.stdout.write(chunk);
+}
+```
+
+</CodeGroup>
+
 ## Stream all events
 
-```python
+<CodeGroup>
+
+```python Python
 result = await storyteller.stream(client, "Write a haiku")
 
 async for event in result.events:
@@ -30,9 +47,34 @@ async for event in result.events:
         print("\n[Done]")
 ```
 
+```typescript TypeScript
+const result = await storyteller.stream(client, {
+  input: 'Write a haiku',
+});
+
+for await (const event of result.events) {
+  if (event.eventType === 'text_delta') {
+    const content = event.data['content'];
+    if (typeof content === 'string') {
+      process.stdout.write(content);
+    }
+  } else if (event.eventType === 'tool_call') {
+    const toolCall = event.data['tool_call'] as Record<string, unknown>;
+    const fn = toolCall?.['function'] as Record<string, unknown>;
+    console.log(`\n[Tool: ${fn?.['name']}]`);
+  } else if (event.eventType === 'agent_finish') {
+    console.log('\n[Done]');
+  }
+}
+```
+
+</CodeGroup>
+
 ## Get final text
 
-```python
+<CodeGroup>
+
+```python Python
 result = await storyteller.stream(client, "What are benefits of reading?")
 
 # Wait for completion and get accumulated text
@@ -40,9 +82,23 @@ final_text = await result.text()
 print(final_text)
 ```
 
+```typescript TypeScript
+const result = await storyteller.stream(client, {
+  input: 'What are benefits of reading?',
+});
+
+// Wait for completion and get accumulated text
+const finalText = await result.text();
+console.log(finalText);
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/03-agent-streaming
 cp .env.example .env
@@ -51,6 +107,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/03-agent-streaming
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/03-agent-streaming)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/03-agent-streaming) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/03-agent-streaming)

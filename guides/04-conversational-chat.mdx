@@ -7,7 +7,9 @@ Build an interactive chat agent that maintains conversation history.
 
 ## Create a chat agent with tools
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, max_steps, MaxStepsConfig
 
 chat_assistant = Agent(
@@ -23,9 +25,31 @@ chat_assistant = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+import { getCurrentTime, getWeather, calculator } from './tools.js';
+
+const chatAssistant = defineAgent({
+  id: 'chat_assistant',
+  model: openai('gpt-4o-mini'),
+  systemPrompt:
+    'You are a friendly assistant. You can:\n' +
+    '- Tell the current time using get_current_time\n' +
+    '- Get weather using get_weather\n' +
+    '- Perform calculations using calculator',
+  tools: [getCurrentTime, getWeather, calculator],
+  stopConditions: [maxSteps({ count: 10 })],
+});
+```
+
+</CodeGroup>
+
 ## Maintain conversation context
 
-```python
+<CodeGroup>
+
+```python Python
 # Use conversation_id to maintain history across messages
 conversation_id = "user-123-session"
 
@@ -44,9 +68,32 @@ result2 = await chat_assistant.stream(
 )
 ```
 
+```typescript TypeScript
+import { randomUUID } from 'node:crypto';
+
+// Use conversationId to maintain history across messages
+const conversationId = randomUUID();
+
+// First message
+const result1 = await chatAssistant.stream(client, {
+  input: "What's the weather in Tokyo?",
+  conversationId,
+});
+
+// Follow-up uses same context
+const result2 = await chatAssistant.stream(client, {
+  input: 'How about London?', // Agent remembers we're asking about weather
+  conversationId,
+});
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/04-conversational-chat
 cp .env.example .env
@@ -55,6 +102,17 @@ python worker.py      # Terminal 1
 python chat.py        # Terminal 2 (interactive)
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/04-conversational-chat
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx chat.ts        # Terminal 2 (interactive)
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/04-conversational-chat)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/04-conversational-chat) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/04-conversational-chat)

@@ -7,7 +7,9 @@ Build agents that show their reasoning process step by step.
 
 ## Define a reasoning schema
 
-```python
+<CodeGroup>
+
+```python Python
 from pydantic import BaseModel, Field
 
 class ReasoningOutput(BaseModel):
@@ -17,9 +19,26 @@ class ReasoningOutput(BaseModel):
     confidence: str = Field(description="high, medium, or low")
 ```
 
+```typescript TypeScript
+import { z } from 'zod';
+
+const reasoningOutputSchema = z.object({
+  problem: z.string().describe('The original problem statement'),
+  thinking_steps: z.array(z.string()).describe('Step-by-step reasoning process'),
+  conclusion: z.string().describe('The final answer or conclusion'),
+  confidence: z.string().describe('Confidence level: high, medium, or low'),
+});
+
+type ReasoningOutput = z.infer<typeof reasoningOutputSchema>;
+```
+
+</CodeGroup>
+
 ## Create a thinking agent
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, max_steps, MaxStepsConfig
 
 thinking_agent = Agent(
@@ -37,9 +56,32 @@ thinking_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const thinkingAgent = defineAgent({
+  id: 'thinking_agent',
+  model: openai('gpt-4o-mini'),
+  systemPrompt:
+    'You are a logical reasoning expert. When given a problem:\n' +
+    '1. Restate the problem\n' +
+    '2. Break down your thinking into clear steps\n' +
+    '3. Consider potential pitfalls\n' +
+    '4. Arrive at a conclusion\n' +
+    '5. State your confidence level',
+  outputSchema: reasoningOutputSchema,
+  stopConditions: [maxSteps({ count: 20 })],
+});
+```
+
+</CodeGroup>
+
 ## Get structured reasoning
 
-```python
+<CodeGroup>
+
+```python Python
 result = await thinking_agent.run(client, "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?")
 
 print(f"Problem: {result.result.problem}")
@@ -49,9 +91,23 @@ print(f"Conclusion: {result.result.conclusion}")
 print(f"Confidence: {result.result.confidence}")
 ```
 
+```typescript TypeScript
+const result = await thinkingAgent.stream(client, {
+  input: 'If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?',
+});
+
+for await (const chunk of result.textChunks) {
+  process.stdout.write(chunk);
+}
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/05-thinking-agent
 cp .env.example .env
@@ -60,6 +116,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/05-thinking-agent
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/05-thinking-agent)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/05-thinking-agent) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/05-thinking-agent)

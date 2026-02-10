@@ -7,7 +7,9 @@ Workflows are durable functions with automatic retry and state management.
 
 ## Simple workflow
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext
 from pydantic import BaseModel
 
@@ -29,9 +31,38 @@ async def process_order(ctx: WorkflowContext, payload: OrderPayload):
     return {"status": "completed", "confirmation": confirmation}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+interface OrderPayload {
+  orderId: string;
+  items: string[];
+  total: number;
+}
+
+const processOrder = defineWorkflow<OrderPayload, unknown, Record<string, unknown>>(
+  { id: 'process_order' },
+  async (ctx, payload) => {
+    // Steps are automatically retried on failure
+    await ctx.step.run('validate', () => validateOrder(payload));
+    await ctx.step.run('reserve', () => reserveInventory(payload.items));
+    await ctx.step.run('charge', () => processPayment(payload.total));
+
+    // Deterministic UUID (same on replay)
+    const confirmation = await ctx.step.uuid('confirmation');
+
+    return { status: 'completed', confirmation };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Custom retry settings
 
-```python
+<CodeGroup>
+
+```python Python
 await ctx.step.run(
     "unreliable_api",
     call_external_api,
@@ -42,24 +73,59 @@ await ctx.step.run(
 )
 ```
 
+```typescript TypeScript
+await ctx.step.run(
+  'unreliable_api',
+  () => callExternalApi(data),
+  {
+    maxRetries: 5,
+    baseDelay: 2000,   // ms
+    maxDelay: 30000,    // ms
+  },
+);
+```
+
+</CodeGroup>
+
 ## Deterministic operations
 
-```python
+<CodeGroup>
+
+```python Python
 # These return the same value on replay
 random_value = await ctx.step.random("coin_flip")
 unique_id = await ctx.step.uuid("order_id")
 timestamp = await ctx.step.now("created_at")
 ```
 
+```typescript TypeScript
+// These return the same value on replay
+const randomValue = await ctx.step.random('coin_flip');
+const uniqueId = await ctx.step.uuid('order_id');
+const timestamp = await ctx.step.now('created_at');
+```
+
+</CodeGroup>
+
 ## Wait for time
 
-```python
+<CodeGroup>
+
+```python Python
 await ctx.step.wait_for("cooldown", seconds=60)
 ```
 
+```typescript TypeScript
+await ctx.step.waitFor('cooldown', { seconds: 60 });
+```
+
+</CodeGroup>
+
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/08-workflow-basics
 cp .env.example .env
@@ -68,6 +134,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/08-workflow-basics
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/08-workflow-basics)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/08-workflow-basics) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/08-workflow-basics)

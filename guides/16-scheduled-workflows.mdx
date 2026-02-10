@@ -7,7 +7,9 @@ Run workflows automatically on a schedule using cron expressions.
 
 ## Daily schedule
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import workflow, WorkflowContext, SchedulePayload
 
 @workflow(id="daily_cleanup", schedule="0 3 * * *")
@@ -18,9 +20,31 @@ async def daily_cleanup(ctx: WorkflowContext, payload: SchedulePayload):
     return {"timestamp": payload.timestamp, "status": "completed"}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+import type { SchedulePayload } from '@polos/sdk';
+
+const dailyCleanup = defineWorkflow<SchedulePayload, unknown, CleanupResult>(
+  {
+    id: 'daily_cleanup',
+    schedule: '0 3 * * *',
+  },
+  async (ctx, payload) => {
+    // Runs daily at 3:00 AM UTC
+    const cleanupResult = await ctx.step.run('cleanup_old_records', () => cleanupOldRecords());
+    const tempResult = await ctx.step.run('cleanup_temp_files', () => cleanupTempFiles());
+    return { timestamp: payload.timestamp, recordsCleaned: cleanupResult.count, filesCleaned: tempResult.count };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Schedule with timezone
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(
     id="morning_report",
     schedule={"cron": "0 8 * * 1-5", "timezone": "America/New_York"},
@@ -32,9 +56,29 @@ async def morning_report(ctx: WorkflowContext, payload: SchedulePayload):
     return {"timestamp": payload.timestamp}
 ```
 
+```typescript TypeScript
+const morningReport = defineWorkflow<SchedulePayload, unknown, ReportResult>(
+  {
+    id: 'morning_report',
+    schedule: { cron: '0 8 * * 1-5', timezone: 'America/New_York' },
+  },
+  async (ctx, payload) => {
+    // Runs at 8:00 AM Eastern, Monday-Friday
+    const metrics = await ctx.step.run('gather_metrics', () => gatherDailyMetrics());
+    const report = await ctx.step.run('generate_report', () => generateReport(metrics));
+    await ctx.step.run('send_report', () => sendReport(report));
+    return { timestamp: payload.timestamp, reportId: report.id, metricsCount: Object.keys(metrics).length };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Hourly sync
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="hourly_sync", schedule="0 * * * *")
 async def hourly_sync(ctx: WorkflowContext, payload: SchedulePayload):
     """Runs at the start of every hour."""
@@ -42,9 +86,27 @@ async def hourly_sync(ctx: WorkflowContext, payload: SchedulePayload):
     return {"synced": result["count"]}
 ```
 
+```typescript TypeScript
+const hourlySync = defineWorkflow<SchedulePayload, unknown, SyncResult>(
+  {
+    id: 'hourly_sync',
+    schedule: '0 * * * *',
+  },
+  async (ctx, payload) => {
+    // Runs at the start of every hour
+    const syncResult = await ctx.step.run('sync_external_data', () => syncExternalData());
+    return { timestamp: payload.timestamp, recordsSynced: syncResult.count };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Schedulable (no default schedule)
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow(id="reminder", schedule=True)
 async def reminder(ctx: WorkflowContext, payload: SchedulePayload):
     """Can be scheduled dynamically via API."""
@@ -52,11 +114,28 @@ async def reminder(ctx: WorkflowContext, payload: SchedulePayload):
     return {"sent": True}
 ```
 
+```typescript TypeScript
+const schedulableReminder = defineWorkflow<SchedulePayload, unknown, ReminderResult>(
+  {
+    id: 'schedulable_reminder',
+    schedule: true, // No default cron, can be scheduled via API
+  },
+  async (ctx, payload) => {
+    await ctx.step.run('send_reminder', () => sendReminder());
+    return { timestamp: payload.timestamp, message: 'Scheduled reminder!', sent: true };
+  },
+);
+```
+
+</CodeGroup>
+
 ## Create schedules dynamically
 
 Use `schedules.create()` to create schedules at runtime. This is useful for per-user or per-entity schedules.
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import PolosClient, schedules
 
 client = PolosClient(project_id="your-project-id")
@@ -86,6 +165,37 @@ for user in users:
     )
 ```
 
+```typescript TypeScript
+import { PolosClient } from '@polos/sdk';
+
+const client = new PolosClient({ projectId: 'your-project-id' });
+
+// Create a schedule for a specific user
+const scheduleId = await client.schedules.create(
+  'schedulable_reminder',
+  '0 8 * * *',
+  'America/New_York',
+  'user-alice', // Unique key for this schedule
+);
+
+// Create different schedules for different users
+const users = [
+  { id: 'user-alice', cron: '0 8 * * *', tz: 'America/New_York' },
+  { id: 'user-bob', cron: '0 9 * * *', tz: 'Europe/London' },
+];
+
+for (const user of users) {
+  await client.schedules.create(
+    'schedulable_reminder',
+    user.cron,
+    user.tz,
+    user.id,
+  );
+}
+```
+
+</CodeGroup>
+
 ## Cron syntax
 
 ```
@@ -106,7 +216,9 @@ Examples:
 
 ## Run it
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/16-scheduled-workflow
 cp .env.example .env
@@ -115,6 +227,17 @@ python worker.py      # Terminal 1
 python main.py        # Terminal 2
 ```
 
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/16-scheduled-workflow
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[View complete example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/16-scheduled-workflow)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/16-scheduled-workflow) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/16-scheduled-workflow)
