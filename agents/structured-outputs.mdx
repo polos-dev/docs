@@ -9,7 +9,8 @@ Structured outputs let agents return data in a predefined format instead of natu
 
 Use Pydantic models to define the output schema:
 
-```python
+<CodeGroup>
+```python Python
 from polos import Agent
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -40,13 +41,46 @@ person_extractor = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent } from "@polos/sdk";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const personNameSchema = z.object({
+  first: z.string().describe("First name"),
+  last: z.string().describe("Last name"),
+});
+
+const genderEnum = z.enum(["male", "female", "unknown"]);
+
+const personSchema = z
+  .object({
+    name: personNameSchema.describe("Person's name with first and last name"),
+    age: z.number().int().min(0).max(130).describe("Age in years"),
+    email: z.string().nullable().default(null).describe("Email address"),
+    location: z.string().default("").describe("City or location"),
+    gender: genderEnum.default("unknown").describe("Gender of the person"),
+  })
+  .describe("Structured person information extracted from text.");
+
+const personExtractor = defineAgent({
+  id: "person-extractor",
+  model: openai("gpt-4o"),
+  systemPrompt:
+    "Extract information about the person mentioned in the text",
+  outputSchema: personSchema,
+});
+```
+</CodeGroup>
+
 ## Using with agent.run()
 
 The `result` field contains a fully validated Pydantic model instance:
 
-```python
+<CodeGroup>
+```python Python
 import asyncio
-from polos import PoloClient
+from polos import PolosClient
 
 async def main():
     client = PolosClient()
@@ -54,9 +88,9 @@ async def main():
         client,
         "Hi, I'm Alice Johnson, 28 years old, living in San Francisco. Email: alice@example.com"
     )
-    
+
     person = response.result  # Person (Pydantic model instance)
-    
+
     print("Structured Output:")
     print(f"  Name: {person.name.first} {person.name.last}")
     print(f"  Age: {person.age}")
@@ -67,6 +101,30 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript TypeScript
+import { PolosClient } from "@polos/sdk";
+
+async function main() {
+  const client = PolosClient.fromEnv();
+  const response = await personExtractor.run(
+    client,
+    "Hi, I'm Alice Johnson, 28 years old, living in San Francisco. Email: alice@example.com"
+  );
+
+  const person = response.result; // Typed via Zod inference
+
+  console.log("Structured Output:");
+  console.log(`  Name: ${person.name.first} ${person.name.last}`);
+  console.log(`  Age: ${person.age}`);
+  console.log(`  Email: ${person.email ?? "(not provided)"}`);
+  console.log(`  Location: ${person.location || "(not provided)"}`);
+  console.log(`  Gender: ${person.gender}`);
+}
+
+main();
+```
+</CodeGroup>
 
 **Output:**
 
@@ -85,20 +143,21 @@ The result is type-safe: you get autocomplete, validation, and runtime type chec
 
 When streaming, the output is JSON that you can parse into your Pydantic model:
 
-```python
+<CodeGroup>
+```python Python
 async def main():
     client = PolosClient()
     stream = await person_extractor.stream(
         client,
         "My name is Bob Smith, I'm 35, and I live in Austin, Texas."
     )
-    
+
     print("Streaming structured output:")
     output = ""
     async for chunk in stream.text_chunks:
         output += chunk
         print(chunk, end="", flush=True)
-    
+
     print("\n\nParsed structure:")
     person = Person.model_validate_json(output)
     print(f"  Name: {person.name.first} {person.name.last}")
@@ -108,6 +167,32 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript TypeScript
+async function main() {
+  const client = PolosClient.fromEnv();
+  const stream = await personExtractor.stream(
+    client,
+    "My name is Bob Smith, I'm 35, and I live in Austin, Texas."
+  );
+
+  console.log("Streaming structured output:");
+  let output = "";
+  for await (const chunk of stream.textChunks) {
+    output += chunk;
+    process.stdout.write(chunk);
+  }
+
+  console.log("\n\nParsed structure:");
+  const person = personSchema.parse(JSON.parse(output));
+  console.log(`  Name: ${person.name.first} ${person.name.last}`);
+  console.log(`  Age: ${person.age}`);
+  console.log(`  Location: ${person.location}`);
+}
+
+main();
+```
+</CodeGroup>
 
 **Output:**
 
@@ -125,7 +210,8 @@ Parsed structure:
 
 Structured outputs support nested models, lists, and enums:
 
-```python
+<CodeGroup>
+```python Python
 from typing import List
 from pydantic import BaseModel, Field
 from polos import Agent, PolosClient
@@ -174,6 +260,62 @@ for phone in contact.phones:
 print(f"Address: {contact.address}")
 ```
 
+```typescript TypeScript
+import { defineAgent, PolosClient } from "@polos/sdk";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+
+const addressSchema = z.object({
+  street: z.string().default("").describe("Street address"),
+  city: z.string().default("").describe("City"),
+  country: z.string().default("").describe("Country"),
+  postalCode: z.string().nullable().default(null).describe("Postal code"),
+});
+
+const phoneNumberSchema = z.object({
+  type: z
+    .string()
+    .default("")
+    .describe("Type of phone number (can be mobile, work, home)"),
+  number: z.string().default("").describe("Phone number"),
+});
+
+const contactSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  phones: z.array(phoneNumberSchema).default([]),
+  address: addressSchema.nullable().default(null),
+  notes: z.string().default(""),
+});
+
+const contactExtractor = defineAgent({
+  id: "contact-extractor",
+  model: anthropic("claude-sonnet-4-5"),
+  systemPrompt: "Extract contact information from text.",
+  outputSchema: contactSchema,
+});
+
+const client = PolosClient.fromEnv();
+const response = await contactExtractor.run(
+  client,
+  `
+    John Doe
+    Email: john@example.com
+    Mobile: +1-555-0123
+    Work: +1-555-0199
+    Address: 123 Main St, New York, NY 10001
+  `
+);
+
+const contact = response.result;
+console.log(`Name: ${contact.name}`);
+for (const phone of contact.phones) {
+  console.log(`  ${phone.type}: ${phone.number}`);
+}
+console.log(`Address: ${JSON.stringify(contact.address)}`);
+```
+</CodeGroup>
+
 ## Provider compatibility
 
 Not all model providers support structured output.
@@ -191,18 +333,28 @@ When a model doesn't natively support structured outputs, Polos automatically:
 
 This ensures your code works consistently across all providers, though it may consume extra tokens for models without native support.
 
-```python
+<CodeGroup>
+```python Python
 # This works even if the model doesn't natively support structured outputs
 # Polos will use an extra LLM call if needed
 response = await person_extractor.run("Extract info from: John, 30, NYC")
 person = response.result  # Always a validated Person instance
 ```
 
+```typescript TypeScript
+// This works even if the model doesn't natively support structured outputs
+// Polos will use an extra LLM call if needed
+const response = await personExtractor.run("Extract info from: John, 30, NYC");
+const person = response.result; // Always a validated person object
+```
+</CodeGroup>
+
 ## Use cases
 
 ### Data extraction
 
-```python
+<CodeGroup>
+```python Python
 # Extract invoice details from text/images
 invoice_extractor = Agent(
     output_schema=Invoice,
@@ -210,9 +362,19 @@ invoice_extractor = Agent(
 )
 ```
 
+```typescript TypeScript
+// Extract invoice details from text/images
+const invoiceExtractor = defineAgent({
+  outputSchema: invoiceSchema,
+  systemPrompt: "Extract invoice data including line items, totals, dates",
+});
+```
+</CodeGroup>
+
 ### Form processing
 
-```python
+<CodeGroup>
+```python Python
 # Convert natural language to structured form data
 form_filler = Agent(
     output_schema=ApplicationForm,
@@ -220,9 +382,19 @@ form_filler = Agent(
 )
 ```
 
+```typescript TypeScript
+// Convert natural language to structured form data
+const formFiller = defineAgent({
+  outputSchema: applicationFormSchema,
+  systemPrompt: "Fill out application forms from user descriptions",
+});
+```
+</CodeGroup>
+
 ### API responses
 
-```python
+<CodeGroup>
+```python Python
 # Build type-safe APIs with guaranteed response structure
 api_handler = Agent(
     output_schema=APIResponse,
@@ -230,12 +402,31 @@ api_handler = Agent(
 )
 ```
 
+```typescript TypeScript
+// Build type-safe APIs with guaranteed response structure
+const apiHandler = defineAgent({
+  outputSchema: apiResponseSchema,
+  systemPrompt: "Process requests and return structured API responses",
+});
+```
+</CodeGroup>
+
 ### Content categorization
 
-```python
+<CodeGroup>
+```python Python
 # Classify and tag content
 classifier = Agent(
     output_schema=ContentClassification,
     system_prompt="Categorize content with tags, sentiment, topics"
 )
 ```
+
+```typescript TypeScript
+// Classify and tag content
+const classifier = defineAgent({
+  outputSchema: contentClassificationSchema,
+  systemPrompt: "Categorize content with tags, sentiment, topics",
+});
+```
+</CodeGroup>

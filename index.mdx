@@ -9,15 +9,17 @@ Polos is a **durable execution platform** for AI agents.
 It provides the stateful infrastructure required to run long-running, autonomous agents reliably at scale -
 including a built-in event system for agent coordination, so you don't need to bolt on Kafka or RabbitMQ.
 
-Write it all in plain Python (or TypeScript - coming soon).
+Write it all in plain Python or TypeScript.
 No DAGs to define, no graph syntax to learn. Use loops, conditionals, and function calls
 naturally while Polos handles durability, reliability and scaling automatically.
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, workflow, WorkflowContext
 
 order_validation_agent = Agent(
-    provider="openai", 
+    provider="openai",
     model="gpt-4o",
     tools=[check_inventory, calculate_shipping]
 )
@@ -29,13 +31,13 @@ async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
         "validate_order",
         order_validation_agent.with_input(f"Validate this order: {order}")
     )
-    
+
     if not validation.result.valid:
         return ProcessOrderOutput(
             status="invalid",
             reason=validation.result.reason
         )
-    
+
     # High-value orders need approval
     if order.amount > 1000:
         # Suspend execution until the order is approved or rejected
@@ -54,21 +56,79 @@ async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
                 status="rejected",
                 reason=decision.get("reason")
             )
-    
+
     # Charge customer (exactly-once guarantee)
     payment = await ctx.step.run("charge", charge_stripe, order)
-    
+
     # Wait for warehouse pickup (could be hours or days)
     await ctx.step.wait_for_event(
         "wait_pickup",
         topic=f"warehouse.pickup/{order.id}"
     )
-    
+
     # Send shipping notification
     await ctx.step.run("notify", send_shipping_email, order)
-    
+
     return ProcessOrderOutput(status="completed", payment_id=payment.id)
 ```
+
+```typescript TypeScript
+import { defineAgent, defineWorkflow } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const orderValidationAgent = defineAgent({
+  id: 'order_validation_agent',
+  model: openai('gpt-4o'),
+  tools: [checkInventory, calculateShipping],
+});
+
+const processOrder = defineWorkflow<ProcessOrderInput, unknown, ProcessOrderOutput>(
+  { id: 'process_order', triggerOnEvent: 'order/new' },
+  async (ctx, order) => {
+    // Agent validates order and checks inventory
+    const validation = await ctx.step.agentInvokeAndWait(
+      'validate_order',
+      orderValidationAgent.withInput(`Validate this order: ${JSON.stringify(order)}`),
+    );
+
+    if (!validation.result.valid) {
+      return { status: 'invalid', reason: validation.result.reason };
+    }
+
+    // High-value orders need approval
+    if (order.amount > 1000) {
+      // Suspend execution until the order is approved or rejected
+      const resumeData = await ctx.step.suspend('approval', {
+        data: {
+          id: order.id,
+          amount: order.amount,
+          items: order.items,
+          user: order.user,
+        },
+      });
+      const decision = (resumeData?.['data'] as Record<string, unknown>) ?? {};
+      if (!decision['approved']) {
+        return { status: 'rejected', reason: decision['reason'] as string };
+      }
+    }
+
+    // Charge customer (exactly-once guarantee)
+    const payment = await ctx.step.run('charge', () => chargeStripe(order));
+
+    // Wait for warehouse pickup (could be hours or days)
+    await ctx.step.waitForEvent('wait_pickup', {
+      topic: `warehouse.pickup/${order.id}`,
+    });
+
+    // Send shipping notification
+    await ctx.step.run('notify', () => sendShippingEmail(order));
+
+    return { status: 'completed', paymentId: payment.id };
+  },
+);
+```
+
+</CodeGroup>
 
 This workflow survives crashes, resumes mid-execution, and pauses for approval - all with zero manual checkpointing, retry logic or queue management.
 
@@ -105,8 +165,9 @@ Polos handles failures, rescheduling, and checkpointing. You just focus on busin
 
 **With Polos:**
 
+<CodeGroup>
 
-```python
+```python Python
 @workflow
 async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
     # Just write Python
@@ -115,10 +176,31 @@ async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
         decision = resume_data.get("data", {})
         if not decision.get("ok"):
             return {"status": "rejected"}
-    
+
     await ctx.step.run("charge", charge_stripe, order)
     await ctx.step.run("notify", send_email, order)
 ```
+
+```typescript TypeScript
+const processOrder = defineWorkflow<ProcessOrderInput, unknown, Record<string, unknown>>(
+  { id: 'process_order' },
+  async (ctx, order) => {
+    // Just write TypeScript
+    if (order.amount > 1000) {
+      const resumeData = await ctx.step.suspend('approval', { data: order });
+      const decision = (resumeData?.['data'] as Record<string, unknown>) ?? {};
+      if (!decision['ok']) {
+        return { status: 'rejected' };
+      }
+    }
+
+    await ctx.step.run('charge', () => chargeStripe(order));
+    await ctx.step.run('notify', () => sendEmail(order));
+  },
+);
+```
+
+</CodeGroup>
 
 **Other platforms:**
 

@@ -25,6 +25,7 @@ Lifecycle events are emitted automatically during workflow execution:
 
 Listen to events for a specific workflow execution:
 
+<CodeGroup>
 ```python
 from polos import workflow, WorkflowContext, PolosClient, events
 
@@ -53,6 +54,39 @@ async for event in events.stream_workflow(client, handle.root_workflow_id, handl
     elif event.event_type == "workflow_finish":
         print(f"Workflow completed")
 ```
+
+```typescript
+import { defineWorkflow, PolosClient, events } from '@polos/sdk';
+
+const dataPipeline = defineWorkflow<PipelineInput, void, void>(
+  { id: 'data-pipeline' },
+  async (ctx, input) => {
+    const data = await ctx.step.run('extract', () => extractData(input));
+    const transformed = await ctx.step.run('transform', () => transformData(data));
+    const final = await ctx.step.invokeAndWait('child_pipeline', childPipeline, transformed);
+    await ctx.step.run('load', () => loadData(final));
+  }
+);
+
+// Start workflow
+const client = PolosClient.fromEnv();
+const handle = await dataPipeline.invoke(
+  client,
+  { source: 'database', table: 'orders' }
+);
+
+// Stream events
+for await (const event of events.streamWorkflow(client, handle.rootWorkflowId, handle.id)) {
+  if (event.eventType === 'step_start') {
+    console.log(`Step started: ${event.data?.step_key}`);
+  } else if (event.eventType === 'step_finish') {
+    console.log(`Step finished: ${event.data?.step_key}`);
+  } else if (event.eventType === 'workflow_finish') {
+    console.log('Workflow completed');
+  }
+}
+```
+</CodeGroup>
 
 ## Event structure
 
@@ -105,6 +139,7 @@ The metadata field identifies which workflow / subworkflow emitted the event.
 Lifecycle events are useful for streaming progress updates to UI. You can send events to
 frontend via Websocket:
 
+<CodeGroup>
 ```python
 from polos import events, PolosClient
 
@@ -123,6 +158,32 @@ async def stream_to_websocket(client: PolosClient, root_workflow_id: str, execut
             break
 ```
 
+```typescript
+import { events, PolosClient } from '@polos/sdk';
+
+async function streamToWebsocket(
+  client: PolosClient,
+  rootWorkflowId: string,
+  executionId: string,
+  websocket: WebSocket
+) {
+  for await (const event of events.streamWorkflow(client, rootWorkflowId, executionId)) {
+    // Send event to frontend
+    websocket.send(JSON.stringify({
+      type: event.eventType,
+      data: event.data,
+      timestamp: event.createdAt,
+    }));
+
+    // Stop streaming when workflow completes
+    if (event.eventType === 'workflow_finish' && event.data?.metadata?.execution_id === executionId) {
+      break;
+    }
+  }
+}
+```
+</CodeGroup>
+
 **Frontend (JavaScript):**
 
 ```javascript
@@ -130,7 +191,7 @@ const ws = new WebSocket('ws://localhost:8000/stream');
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  
+
   if (data.type === 'step_start') {
     console.log(`Step started: ${data.data.step_key}`);
   } else if (data.type === 'step_finish') {

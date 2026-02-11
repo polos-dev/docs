@@ -9,7 +9,8 @@ Agents in Polos use LLMs to autonomously reason about tasks and decide which act
 
 Create an agent by specifying a model provider, system prompt, and optional tools:
 
-```python
+<CodeGroup>
+```python Python
 from polos import Agent, tool, WorkflowContext
 from pydantic import BaseModel
 
@@ -39,6 +40,49 @@ weather_agent = Agent(
     tools=[get_weather]
 )
 ```
+
+```typescript TypeScript
+import { defineAgent, defineTool, WorkflowContext } from "@polos/sdk";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const WeatherInput = z.object({
+  city: z.string(),
+});
+
+const WeatherOutput = z.object({
+  temperature: z.number(),
+  condition: z.string(),
+  city: z.string(),
+});
+
+const getWeather = defineTool(
+  {
+    id: "get-weather",
+    description: "Get current weather for a city",
+    inputSchema: WeatherInput,
+    outputSchema: WeatherOutput,
+  },
+  async (ctx: WorkflowContext, input) => {
+    // Call weather API
+    const data = await weatherApi.get(input.city);
+    return {
+      city: input.city,
+      temperature: data.temp,
+      condition: data.conditions,
+    };
+  }
+);
+
+const weatherAgent = defineAgent({
+  id: "weather-agent",
+  model: openai("gpt-4o"),
+  systemPrompt:
+    "You are a helpful weather assistant. Use the get_weather tool to answer questions about weather.",
+  tools: [getWeather],
+});
+```
+</CodeGroup>
 
 ## Agent configuration
 
@@ -71,7 +115,8 @@ weather_agent = Agent(
 
 Use `agent.run()` for complete execution:
 
-```python
+<CodeGroup>
+```python Python
 import asyncio
 from polos import PolosClient
 
@@ -81,7 +126,7 @@ async def main():
         client,
         "What's the weather like in New York and London? Compare them."
     )
-    
+
     print(response.result)
     # Agent automatically:
     # 1. Calls get_weather("New York")
@@ -92,6 +137,28 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript TypeScript
+import { PolosClient } from "@polos/sdk";
+
+async function main() {
+  const client = PolosClient.fromEnv();
+  const response = await weatherAgent.run(
+    client,
+    "What's the weather like in New York and London? Compare them."
+  );
+
+  console.log(response.result);
+  // Agent automatically:
+  // 1. Calls getWeather("New York")
+  // 2. Calls getWeather("London")
+  // 3. Generates comparison
+  // 4. Returns final answer
+}
+
+main();
+```
+</CodeGroup>
 
 **How it works:**
 
@@ -106,7 +173,8 @@ if __name__ == "__main__":
 
 You can pass any keyword argument supported by your provider:
 
-```python
+<CodeGroup>
+```python Python
 # Anthropic extended thinking
 response = await anthropic_agent.run(
     client,
@@ -134,28 +202,86 @@ response = await weather_agent.run(
 )
 ```
 
+```typescript TypeScript
+// Anthropic extended thinking
+const response1 = await anthropicAgent.run(
+  client,
+  "What's the weather in New York? How did it impact my day?",
+  {
+    thinking: {
+      type: "enabled",
+      budget_tokens: 4000,
+    },
+  }
+);
+
+// OpenAI reasoning
+const response2 = await openaiAgent.run(
+  client,
+  "Analyze the weather patterns",
+  {
+    reasoning_effort: "high", // OpenAI o1 models
+  }
+);
+
+// Temperature and other common parameters
+const response3 = await weatherAgent.run(
+  client,
+  "What's the weather?",
+  {
+    temperature: 0.7,
+    max_tokens: 1000,
+    top_p: 0.9,
+  }
+);
+```
+</CodeGroup>
+
 These parameters are passed directly to the underlying provider API.
 
 ### Streaming with `agent.stream()`
 
 Stream responses for real-time feedback:
 
-```python
+<CodeGroup>
+```python Python
 async def main():
     client = PolosClient()
     stream = await weather_agent.stream(
         client, "What's the weather in Tokyo?"
     )
-    
+
     # Stream text chunks as they arrive
     async for chunk in stream.text_chunks:
         print(chunk, end="", flush=True)
-    
+
     print("\n")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+```typescript TypeScript
+import { PolosClient } from "@polos/sdk";
+
+async function main() {
+  const client = PolosClient.fromEnv();
+  const stream = await weatherAgent.stream(
+    client,
+    "What's the weather in Tokyo?"
+  );
+
+  // Stream text chunks as they arrive
+  for await (const chunk of stream.textChunks) {
+    process.stdout.write(chunk);
+  }
+
+  console.log("\n");
+}
+
+main();
+```
+</CodeGroup>
 
 **Stream features:**
 
@@ -165,7 +291,8 @@ if __name__ == "__main__":
 
 You can also pass provider-specific parameters to `agent.stream()`:
 
-```python
+<CodeGroup>
+```python Python
 stream = await weather_agent.stream(
     client,
     "Compare weather across multiple cities",
@@ -174,13 +301,26 @@ stream = await weather_agent.stream(
 )
 ```
 
+```typescript TypeScript
+const stream = await weatherAgent.stream(
+  client,
+  "Compare weather across multiple cities",
+  {
+    temperature: 0.8,
+    max_tokens: 2000,
+  }
+);
+```
+</CodeGroup>
+
 See [Streaming](/agents/streaming) for advanced streaming patterns.
 
 ## Agent responses
 
 Both `agent.run()` and `agent.stream()` return response objects with useful information:
 
-```python
+<CodeGroup>
+```python Python
 response = await weather_agent.run("What's the weather in SF?")
 
 # Access the final text result
@@ -197,6 +337,25 @@ print(f"Input tokens: {response.usage.input_tokens}")
 print(f"Output tokens: {response.usage.output_tokens}")
 ```
 
+```typescript TypeScript
+const response = await weatherAgent.run("What's the weather in SF?");
+
+// Access the final text result
+console.log(response.result);
+
+// View tool results
+for (const toolResult of response.toolResults) {
+  console.log(`Tool: ${toolResult.toolName}`);
+  console.log(`Input: ${toolResult.result}`);
+}
+
+// Check token usage
+console.log(`Total tokens: ${response.usage.totalTokens}`);
+console.log(`Input tokens: ${response.usage.inputTokens}`);
+console.log(`Output tokens: ${response.usage.outputTokens}`);
+```
+</CodeGroup>
+
 ## Agent durability
 
 Agents in Polos are durable - they survive failures and resume from the last completed step.
@@ -210,7 +369,8 @@ Agents in Polos are durable - they survive failures and resume from the last com
 
 **Example recovery scenario:**
 
-```python
+<CodeGroup>
+```python Python
 # Agent execution starts
 response = await weather_agent.run(client, "Compare weather in 5 cities")
 
@@ -225,6 +385,22 @@ response = await weather_agent.run(client, "Compare weather in 5 cities")
 # Continues with remaining cities
 ```
 
+```typescript TypeScript
+// Agent execution starts
+const response = await weatherAgent.run(client, "Compare weather in 5 cities");
+
+// Agent calls getWeather("New York") ✓ - cached
+// Agent calls getWeather("London") ✓ - cached
+// Worker crashes ❌
+
+// On retry:
+// Agent resumes from last completed step
+// getWeather("New York") - returns cached result (no API call)
+// getWeather("London") - returns cached result (no API call)
+// Continues with remaining cities
+```
+</CodeGroup>
+
 **Benefits:**
 
 - No duplicate tool calls
@@ -237,7 +413,8 @@ See [Durable Execution](/fundamentals/durable-execution) for how this works unde
 
 Agents are workflows, so you can compose them with other workflow steps:
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow
@@ -247,10 +424,10 @@ async def customer_support_workflow(ctx: WorkflowContext, input: CustomerSupport
         "weather_agent",
         weather_agent.with_input(input.question)
     )
-    
+
     # Log the interaction
     await ctx.step.run("log", log_interaction, agent_response)
-    
+
     # Send follow-up email
     await ctx.step.run(
         "send_email",
@@ -258,9 +435,36 @@ async def customer_support_workflow(ctx: WorkflowContext, input: CustomerSupport
         to=input.customer_email,
         body=agent_response.result
     )
-    
+
     return agent_response
 ```
+
+```typescript TypeScript
+import { defineWorkflow, WorkflowContext } from "@polos/sdk";
+
+const customerSupportWorkflow = defineWorkflow(
+  async (ctx: WorkflowContext, input: CustomerSupportInput) => {
+    // Run agent to handle customer query
+    const agentResponse = await ctx.step.agentInvokeAndWait(
+      "weather_agent",
+      weatherAgent.withInput(input.question)
+    );
+
+    // Log the interaction
+    await ctx.step.run("log", logInteraction, agentResponse);
+
+    // Send follow-up email
+    await ctx.step.run(
+      "send_email",
+      sendEmail,
+      { to: input.customerEmail, body: agentResponse.result }
+    );
+
+    return agentResponse;
+  }
+);
+```
+</CodeGroup>
 
 This combines agent autonomy with workflow orchestration for complex multi-step processes.
 

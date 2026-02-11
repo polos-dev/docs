@@ -23,7 +23,8 @@ They run after the LLM step and tool execution.
 - **Executed tool**: Stop when specific tools have been called.
 - **Has text**: Stop when specific text appears in the response.
 
-```python
+<CodeGroup>
+```python Python
 from polos import (
     Agent,
     max_tokens,
@@ -57,6 +58,30 @@ response = await research_agent.run(
     "Research AI agents and write a comprehensive report"
 )
 ```
+```typescript TypeScript
+import { defineAgent, maxTokens, maxSteps, executedTool, hasText } from '@polos/sdk';
+import { openai } from '@polos/sdk/models';
+
+const researchAgent = defineAgent({
+  id: 'research-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'Research the topic thoroughly.',
+  tools: [searchWeb, readArticle],
+  stopConditions: [
+    maxTokens({ limit: 10000 }),  // Stop at 10k tokens
+    maxSteps({ count: 5 }),  // Stop after 5 steps
+    executedTool({    // Stop after both getWeather and searchNews are executed
+      toolNames: ['get_weather', 'search_news'],
+    }),
+    hasText({ texts: ['DONE'] }),  // Stop when the LLM response contains DONE
+  ],
+});
+
+const response = await researchAgent.run(
+  'Research AI agents and write a comprehensive report'
+);
+```
+</CodeGroup>
 
 Agent stops when **any of the stop conditions** are met.
 
@@ -66,7 +91,8 @@ Agent stops when **any of the stop conditions** are met.
 
 Define your own stop conditions for specific use cases:
 
-```python
+<CodeGroup>
+```python Python
 from polos import stop_condition, StopConditionContext
 from pydantic import BaseModel
 
@@ -76,7 +102,7 @@ class MaxInputTokensConfig(BaseModel):
 
 @stop_condition
 async def max_input_tokens(
-    ctx: StopConditionContext, 
+    ctx: StopConditionContext,
     config: MaxInputTokensConfig
 ) -> bool:
     """Stop when input tokens exceed limit."""
@@ -84,7 +110,7 @@ async def max_input_tokens(
     for step in ctx.steps:
         if step.usage:
             input_tokens += step.usage.input_tokens
-    
+
     return input_tokens >= config.limit
 
 # Use the custom stop condition
@@ -98,12 +124,45 @@ context_aware_agent = Agent(
     ]
 )
 ```
+```typescript TypeScript
+import { defineAgent, defineStopCondition } from '@polos/sdk';
+import { openai } from '@polos/sdk/models';
+
+interface MaxInputTokensConfig {
+  limit: number;
+}
+
+const maxInputTokens = defineStopCondition(
+  async (ctx, config: MaxInputTokensConfig) => {
+    let inputTokens = 0;
+    for (const step of ctx.steps) {
+      if (step.usage) {
+        inputTokens += step.usage.inputTokens;
+      }
+    }
+    return inputTokens >= config.limit;
+  },
+  { name: 'maxInputTokens' }
+);
+
+// Use the custom stop condition
+const contextAwareAgent = defineAgent({
+  id: 'context-agent',
+  model: openai('gpt-4o'),
+  tools: [search, analyze],
+  stopConditions: [
+    maxInputTokens({ limit: 5000 }),
+  ],
+});
+```
+</CodeGroup>
 
 ## Stop condition context
 
 Stop conditions receive a `StopConditionContext` with execution history:
 
-```python
+<CodeGroup>
+```python Python
 @stop_condition
 async def custom_condition(
     ctx: StopConditionContext,
@@ -113,21 +172,56 @@ async def custom_condition(
     for step in ctx.steps:
         # Check content
         content = step.content
-        
+
         # Check token usage
         if step.usage:
             tokens = step.usage.total_tokens
             input_tokens = step.usage.input_tokens
             output_tokens = step.usage.output_tokens
-        
+
         # Check tool calls
         for tool_call in step.tool_calls:
             tool_name = tool_call.function.name
             tool_args = tool_call.function.arguments
-    
+
     # Return True to stop, False to continue
     return some_condition
 ```
+```typescript TypeScript
+import { defineStopCondition } from '@polos/sdk';
+
+interface YourConfig {
+  // your config fields
+}
+
+const customCondition = defineStopCondition(
+  async (ctx, config: YourConfig) => {
+    // Access all steps executed so far
+    for (const step of ctx.steps) {
+      // Check content
+      const content = step.content;
+
+      // Check token usage
+      if (step.usage) {
+        const tokens = step.usage.totalTokens;
+        const inputTokens = step.usage.inputTokens;
+        const outputTokens = step.usage.outputTokens;
+      }
+
+      // Check tool calls
+      for (const toolCall of step.toolCalls) {
+        const toolName = toolCall.function.name;
+        const toolArgs = toolCall.function.arguments;
+      }
+    }
+
+    // Return true to stop, false to continue
+    return someCondition;
+  },
+  { name: 'customCondition' }
+);
+```
+</CodeGroup>
 
 ## Key takeaways
 

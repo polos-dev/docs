@@ -7,9 +7,10 @@ While Polos automatically traces LLM calls, tool invocations, and workflow steps
 
 ## Creating a custom span
 
-Use `ctx.step.trace()` as a context manager to create a custom span:
+Use `ctx.step.trace()` to create a custom span:
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow
@@ -24,6 +25,29 @@ async def my_workflow(ctx: WorkflowContext, input: MyInput):
 
     return result
 ```
+```typescript TypeScript
+import { defineWorkflow, WorkflowContext } from '@polos/sdk';
+
+const myWorkflow = defineWorkflow<MyInput, {}, typeof result>(
+  { id: 'my-workflow' },
+  async (ctx, input) => {
+    // Custom span for a database query
+    const span = ctx.step.trace('database_query', { table: 'users' });
+    try {
+      // Your code here
+      const result = await ctx.step.run('queryDatabase', () => queryDatabase('SELECT * FROM users'));
+
+      // Add attributes to the span
+      span.setAttribute('rowCount', result.length);
+
+      return result;
+    } finally {
+      span.end();
+    }
+  }
+);
+```
+</CodeGroup>
 
 The first argument is the span name, and the second (optional) argument is a dictionary of initial attributes.
 
@@ -31,7 +55,8 @@ The first argument is the span name, and the second (optional) argument is a dic
 
 You can add metadata to spans using attributes:
 
-```python
+<CodeGroup>
+```python Python
 with ctx.step.trace("external_api_call") as span:
     response = await ctx.step.run("external_api", call_external_api, url)
 
@@ -46,12 +71,33 @@ with ctx.step.trace("external_api_call") as span:
         "content_type": response.headers.get("content-type"),
     })
 ```
+```typescript TypeScript
+const span = ctx.step.trace('externalApiCall');
+try {
+  const response = await ctx.step.run('externalApi', () => callExternalApi(url));
+
+  // Set a single attribute
+  span.setAttribute('statusCode', response.statusCode);
+  span.setAttribute('success', response.ok);
+
+  // Set multiple attributes at once
+  span.setAttributes({
+    url: url,
+    responseSize: response.content.length,
+    contentType: response.headers.get('content-type'),
+  });
+} finally {
+  span.end();
+}
+```
+</CodeGroup>
 
 ## Adding events
 
 Events mark specific moments within a span:
 
-```python
+<CodeGroup>
+```python Python
 with ctx.step.trace("data_processing") as span:
     span.add_event("started_validation")
 
@@ -66,12 +112,33 @@ with ctx.step.trace("data_processing") as span:
 
     span.add_event("processing_complete")
 ```
+```typescript TypeScript
+const span = ctx.step.trace('dataProcessing');
+try {
+  span.addEvent('startedValidation');
+
+  await ctx.step.run('validateData', () => validateData(data));
+
+  span.addEvent('validationComplete', { attributes: {
+    recordsValidated: data.length,
+    errorsFound: 0,
+  }});
+
+  processData(data);
+
+  span.addEvent('processingComplete');
+} finally {
+  span.end();
+}
+```
+</CodeGroup>
 
 ## Nested spans
 
 Spans can be nested to show hierarchical relationships:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def my_workflow(ctx: WorkflowContext, input: MyInput):
     with ctx.step.trace("parent_operation") as parent_span:
@@ -85,10 +152,39 @@ async def my_workflow(ctx: WorkflowContext, input: MyInput):
 
         await ctx.step.run("step_two", step_two_func)
 ```
+```typescript TypeScript
+import { defineWorkflow, WorkflowContext } from '@polos/sdk';
+
+const myWorkflow = defineWorkflow<MyInput, {}, void>(
+  { id: 'my-workflow' },
+  async (ctx, input) => {
+    const parentSpan = ctx.step.trace('parentOperation');
+    try {
+      // Do some work
+      await ctx.step.run('stepOne', () => stepOneFunc());
+
+      // Nested span within the parent
+      const childSpan = ctx.step.trace('childOperation');
+      try {
+        childSpan.setAttribute('nested', true);
+        await ctx.step.run('doChildWork', () => doChildWork());
+      } finally {
+        childSpan.end();
+      }
+
+      await ctx.step.run('stepTwo', () => stepTwoFunc());
+    } finally {
+      parentSpan.end();
+    }
+  }
+);
+```
+</CodeGroup>
 
 You can also create spans within step functions:
 
-```python
+<CodeGroup>
+```python Python
 async def process_data(ctx: WorkflowContext, data: dict):
     with ctx.step.trace("data_transformation", {"input_size": len(data)}) as span:
         transformed = transform(data)
@@ -101,5 +197,24 @@ async def process_data(ctx: WorkflowContext, data: dict):
 
         return transformed
 ```
+```typescript TypeScript
+async function processData(ctx: WorkflowContext, data: Record<string, unknown>) {
+  const span = ctx.step.trace('dataTransformation', { inputSize: Object.keys(data).length });
+  try {
+    const transformed = transform(data);
+
+    span.setAttributes({
+      outputSize: Object.keys(transformed).length,
+      success: true,
+    });
+    span.addEvent('transformationComplete');
+
+    return transformed;
+  } finally {
+    span.end();
+  }
+}
+```
+</CodeGroup>
 
 These custom spans appear alongside automatic traces in the Polos dashboard, giving you complete visibility into your workflow execution.

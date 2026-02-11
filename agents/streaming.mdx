@@ -9,23 +9,42 @@ Streaming provides real-time feedback as agents execute, allowing you to display
 
 Use `agent.stream()` to stream agent responses:
 
-```python
+<CodeGroup>
+```python Python
 import asyncio
 from polos import PolosClient
 
 async def main():
     client = PolosClient()
     stream = await weather_agent.stream(client, "What's the weather in Tokyo?")
-    
+
     # Stream text as it's generated
     async for chunk in stream.text_chunks:
         print(chunk, end="", flush=True)
-    
+
     print("\n")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+```typescript TypeScript
+import { PolosClient } from "@polos/sdk";
+
+async function main() {
+  const client = PolosClient.fromEnv();
+  const stream = await weatherAgent.stream(client, "What's the weather in Tokyo?");
+
+  // Stream text as it's generated
+  for await (const chunk of stream.textChunks) {
+    process.stdout.write(chunk);
+  }
+
+  console.log("\n");
+}
+
+main();
+```
+</CodeGroup>
 
 ## Stream iterators
 
@@ -35,12 +54,21 @@ Polos provides multiple ways to consume streamed responses:
 
 Stream only the text content:
 
-```python
+<CodeGroup>
+```python Python
 stream = await agent.stream(client, "Explain quantum computing")
 
 async for chunk in stream.text_chunks:
     print(chunk, end="", flush=True)
 ```
+```typescript TypeScript
+const stream = await agent.stream(client, "Explain quantum computing");
+
+for await (const chunk of stream.textChunks) {
+  process.stdout.write(chunk);
+}
+```
+</CodeGroup>
 
 **Use case:** Display text to users in real-time, like ChatGPT's streaming interface.
 
@@ -48,7 +76,8 @@ async for chunk in stream.text_chunks:
 
 Access full event stream including tool calls, steps, and metadata:
 
-```python
+<CodeGroup>
+```python Python
 stream = await agent.stream(client, "Search for Python tutorials and summarize them")
 
 async for event in stream.events:
@@ -58,6 +87,19 @@ async for event in stream.events:
         tool_name = event.data.get("tool_name")
         print(f"\n[Calling tool: {tool_name}]\n")
 ```
+```typescript TypeScript
+const stream = await agent.stream(client, "Search for Python tutorials and summarize them");
+
+for await (const event of stream.events) {
+  if (event.eventType === "text_delta") {
+    process.stdout.write(event.data?.content ?? "");
+  } else if (event.eventType === "tool_call") {
+    const toolName = event.data?.toolName;
+    console.log(`\n[Calling tool: ${toolName}]\n`);
+  }
+}
+```
+</CodeGroup>
 
 **Use case:** Build rich UIs that show tool execution progress, reasoning steps, etc.
 
@@ -65,12 +107,20 @@ async for event in stream.events:
 
 Get the complete accumulated text after streaming finishes:
 
-```python
+<CodeGroup>
+```python Python
 stream = await agent.stream(client, "Write a haiku about programming")
 
 final_text = await stream.text()
 print(final_text)
 ```
+```typescript TypeScript
+const stream = await agent.stream(client, "Write a haiku about programming");
+
+const finalText = await stream.text();
+console.log(finalText);
+```
+</CodeGroup>
 
 **Use case:** When you need the complete response but want streaming for progress indication.
 
@@ -78,7 +128,8 @@ print(final_text)
 
 Get the full result object with usage stats, tool calls, and metadata:
 
-```python
+<CodeGroup>
+```python Python
 stream = await agent.stream(client, "What's 2+2?")
 
 result = await stream.result()
@@ -92,6 +143,22 @@ for tool_call in result.tool_results:
     print(f"Tool: {tool_call.tool_name}")
     print(f"Input: {tool_call.result}")
 ```
+```typescript TypeScript
+const stream = await agent.stream(client, "What's 2+2?");
+
+const result = await stream.result();
+
+console.log(`Result: ${result.result}`);
+console.log(`Total steps: ${result.totalSteps}`);
+console.log(`Tokens used: ${result.usage.totalTokens}`);
+
+// Access tool calls
+for (const toolCall of result.toolResults) {
+  console.log(`Tool: ${toolCall.toolName}`);
+  console.log(`Input: ${toolCall.result}`);
+}
+```
+</CodeGroup>
 
 **Use case:** Analytics, logging, cost tracking, debugging.
 
@@ -134,33 +201,59 @@ By default, agents emit lifecycle events during execution - regardless of whethe
 
 ### Using lifecycle events
 
-```python
+<CodeGroup>
+```python Python
 stream = await agent.stream(client, "Research AI agents and create a summary")
 
 async for event in stream.events:
     if event.event_type == "agent_start":
         print("🚀 Agent started")
-    
+
     elif event.event_type == "step_start":
         step_name = event.data.get("step_key")
         print(f"⏳ Running step: {step_name}")
-    
+
     elif event.event_type == "tool_call":
         tool_name = event.data.get("tool_call", {}).get("function", {}).get("name")
         print(f"🔧 Calling tool: {tool_name}")
-    
+
     elif event.event_type == "text_delta":
         content = event.data.get("content", "")
         print(content, end="", flush=True)
-    
+
     elif event.event_type == "step_finish":
         step_name = event.data.get("step_key")
         print(f"\n✓ Completed step: {step_name}")
-    
+
     elif event.event_type == "agent_finish":
         usage = event.data.get("usage", {})
         print(f"\n✅ Agent finished - Tokens: {usage.get('total_tokens')}")
 ```
+```typescript TypeScript
+const stream = await agent.stream(client, "Research AI agents and create a summary");
+
+for await (const event of stream.events) {
+  if (event.eventType === "agent_start") {
+    console.log("🚀 Agent started");
+  } else if (event.eventType === "step_start") {
+    const stepName = event.data?.stepKey;
+    console.log(`⏳ Running step: ${stepName}`);
+  } else if (event.eventType === "tool_call") {
+    const toolName = event.data?.toolCall?.function?.name;
+    console.log(`🔧 Calling tool: ${toolName}`);
+  } else if (event.eventType === "text_delta") {
+    const content = event.data?.content ?? "";
+    process.stdout.write(content);
+  } else if (event.eventType === "step_finish") {
+    const stepName = event.data?.stepKey;
+    console.log(`\n✓ Completed step: ${stepName}`);
+  } else if (event.eventType === "agent_finish") {
+    const usage = event.data?.usage ?? {};
+    console.log(`\n✅ Agent finished - Tokens: ${usage.totalTokens}`);
+  }
+}
+```
+</CodeGroup>
 
 **Example output:**
 
@@ -179,7 +272,8 @@ Based on recent research, AI agents are...
 
 Even when using `agent.run()` (non-streaming), lifecycle events are still emitted. You can listen to them separately:
 
-```python
+<CodeGroup>
+```python Python
 from polos import PolosClient, events
 import json
 
@@ -205,32 +299,76 @@ async for event in events.stream_workflow(client, handle.root_workflow_id, handl
     elif event.event_type == "agent_finish":
         print("\n\nAgent finished")
 ```
+```typescript TypeScript
+import { PolosClient, events } from "@polos/sdk";
+
+const client = PolosClient.fromEnv();
+
+// Start the agent - non-streaming
+const handle = await weatherAgent.invoke(client, {
+  input: "What is the weather in New York and Mumbai? Compare them.",
+  streaming: false, // Set to false for non-streaming execution
+});
+
+// Listen to events using streamWorkflow
+console.log("Streaming events:\n");
+for await (const event of events.streamWorkflow(client, handle.rootWorkflowId, handle.id)) {
+  if (event.eventType === "step_start") {
+    console.log(`\n\nStep started: ${event.data?.stepKey}`);
+  } else if (event.eventType === "step_finish") {
+    // Print the result of the step
+    console.log(`\n\nStep finished: ${JSON.stringify(event.data?.data?.result ?? {}, null, 2)}`);
+  } else if (event.eventType === "agent_finish") {
+    console.log("\n\nAgent finished");
+  }
+}
+```
+</CodeGroup>
 
 ## Building UIs with streaming
 
 ### Basic text streaming UI
 
-```python
+<CodeGroup>
+```python Python
 async def stream_to_ui(agent, user_message):
     stream = await agent.stream(client, user_message)
-    
+
     async for chunk in stream.text_chunks:
         # Send chunk to frontend
         await websocket.send_json({
             "type": "text_chunk",
             "content": chunk
         })
-    
+
     # Send completion signal
     await websocket.send_json({"type": "done"})
 ```
+```typescript TypeScript
+async function streamToUi(agent: Agent, userMessage: string) {
+  const stream = await agent.stream(client, userMessage);
+
+  for await (const chunk of stream.textChunks) {
+    // Send chunk to frontend
+    await websocket.send(JSON.stringify({
+      type: "text_chunk",
+      content: chunk,
+    }));
+  }
+
+  // Send completion signal
+  await websocket.send(JSON.stringify({ type: "done" }));
+}
+```
+</CodeGroup>
 
 ### Rich progress UI
 
-```python
+<CodeGroup>
+```python Python
 async def stream_with_progress(agent, user_message):
     stream = await agent.stream(client, user_message)
-    
+
     async for event in stream.events:
         if event.event_type == "tool_call":
             await websocket.send_json({
@@ -238,25 +376,52 @@ async def stream_with_progress(agent, user_message):
                 "tool": event.data.get("tool_call", {}).get("function", {}).get("tool_name"),
                 "status": "executing"
             })
-        
+
         elif event.event_type == "text_delta":
             await websocket.send_json({
                 "type": "text",
                 "content": event.data.get("content", "")
             })
-        
+
         elif event.event_type == "agent_finish":
             await websocket.send_json({
                 "type": "complete",
                 "usage": event.data.get("usage")
             })
 ```
+```typescript TypeScript
+async function streamWithProgress(agent: Agent, userMessage: string) {
+  const stream = await agent.stream(client, userMessage);
+
+  for await (const event of stream.events) {
+    if (event.eventType === "tool_call") {
+      await websocket.send(JSON.stringify({
+        type: "tool_call",
+        tool: event.data?.toolCall?.function?.toolName,
+        status: "executing",
+      }));
+    } else if (event.eventType === "text_delta") {
+      await websocket.send(JSON.stringify({
+        type: "text",
+        content: event.data?.content ?? "",
+      }));
+    } else if (event.eventType === "agent_finish") {
+      await websocket.send(JSON.stringify({
+        type: "complete",
+        usage: event.data?.usage,
+      }));
+    }
+  }
+}
+```
+</CodeGroup>
 
 ## Error handling in streams
 
 Streams automatically handle errors and emit error events:
 
-```python
+<CodeGroup>
+```python Python
 stream = await agent.stream(client, "Do something risky")
 
 try:
@@ -265,16 +430,34 @@ try:
             error_msg = event.data.get("error")
             print(f"Error: {error_msg}")
             break
-        
+
         elif event.event_type == "text_delta":
             print(event.data.get("content", ""), end="")
 except Exception as e:
     print(f"Stream failed: {e}")
 ```
+```typescript TypeScript
+const stream = await agent.stream(client, "Do something risky");
+
+try {
+  for await (const event of stream.events) {
+    if (event.eventType === "error") {
+      const errorMsg = event.data?.error;
+      console.error(`Error: ${errorMsg}`);
+      break;
+    } else if (event.eventType === "text_delta") {
+      process.stdout.write(event.data?.content ?? "");
+    }
+  }
+} catch (e) {
+  console.error(`Stream failed: ${e}`);
+}
+```
+</CodeGroup>
 
 ## Key takeaways
 
-- `stream.text_chunks` - Simple text-only streaming
+- `stream.text_chunks` / `stream.textChunks` - Simple text-only streaming
 - `stream.events` - Full access to lifecycle events, tool calls, and metadata
 - `stream.text()` - Get complete accumulated text
 - `stream.result()` - Get full result with usage and tool information

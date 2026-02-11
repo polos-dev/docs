@@ -9,22 +9,44 @@ Steps are the fundamental unit of durability in Polos. Each step's execution is 
 
 A step is a durable operation within a workflow. When a step completes, its output is saved to the database. If the workflow crashes, completed steps return their cached results on replay - no re-execution, no duplicate side effects.
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow
 async def example_workflow(ctx: WorkflowContext, input: ExampleInput):
     # Step 1: Fetch data (cached on replay)
     data = await ctx.step.run("fetch", fetch_from_api, input.url)
-    
+
     # Step 2: Process data (cached on replay)
     processed = await ctx.step.run("process", transform_data, data)
-    
+
     # Step 3: Save result (executes only once)
     await ctx.step.run("save", save_to_db, processed)
-    
+
     return {"status": "completed"}
 ```
+
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const exampleWorkflow = defineWorkflow<ExampleInput, void, { status: string }>(
+  { id: 'example-workflow' },
+  async (ctx, input) => {
+    // Step 1: Fetch data (cached on replay)
+    const data = await ctx.step.run('fetch', () => fetchFromApi(input.url));
+
+    // Step 2: Process data (cached on replay)
+    const processed = await ctx.step.run('process', () => transformData(data));
+
+    // Step 3: Save result (executes only once)
+    await ctx.step.run('save', () => saveToDb(processed));
+
+    return { status: 'completed' };
+  }
+);
+```
+</CodeGroup>
 
 **On failure after step 2:**
 
@@ -51,7 +73,8 @@ Steps are not queued or orchestrated — they run inline with the workflow code.
 
 Run any Python function as a durable step:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def process_order(ctx: WorkflowContext, input: OrderInput):
     # Run async function
@@ -67,13 +90,36 @@ async def process_order(ctx: WorkflowContext, input: OrderInput):
         generate_pdf,  # Sync function
         order
     )
-    
+
     return receipt
 ```
 
+```typescript TypeScript
+const processOrder = defineWorkflow<OrderInput, void, Receipt>(
+  { id: 'process-order' },
+  async (ctx, input) => {
+    // Run async function
+    const order = await ctx.step.run(
+      'validate_order',
+      () => validateOrder(input.orderId)
+    );
+
+    // Run sync function
+    const receipt = await ctx.step.run(
+      'generate_receipt',
+      () => generatePdf(order)
+    );
+
+    return receipt;
+  }
+);
+```
+</CodeGroup>
+
 **With retry configuration:**
 
-```python
+<CodeGroup>
+```python Python
 result = await ctx.step.run(
     "api_call",
     call_external_api,
@@ -83,6 +129,15 @@ result = await ctx.step.run(
     max_delay=30.0
 )
 ```
+
+```typescript TypeScript
+const result = await ctx.step.run(
+  'api_call',
+  () => callExternalApi(url),
+  { maxRetries: 5, baseDelay: 2.0, maxDelay: 30.0 }
+);
+```
+</CodeGroup>
 
 **What should be a step:**
 
@@ -102,7 +157,8 @@ result = await ctx.step.run(
 
 Start a child workflow without waiting for it to complete:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
     # Start child workflow
@@ -111,17 +167,37 @@ async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
         child_workflow,
         {"data": input.data}
     )
-    
+
     # Continue immediately (don't wait for child to complete)
     print(f"Started workflow: {handle.id}")
     return {"child_id": handle.id}
 ```
 
+```typescript TypeScript
+const parentWorkflow = defineWorkflow<ParentInput, void, { childId: string }>(
+  { id: 'parent-workflow' },
+  async (ctx, input) => {
+    // Start child workflow
+    const handle = await ctx.step.invoke(
+      'start_child',
+      childWorkflow,
+      { data: input.data }
+    );
+
+    // Continue immediately (don't wait for child to complete)
+    console.log(`Started workflow: ${handle.id}`);
+    return { childId: handle.id };
+  }
+);
+```
+</CodeGroup>
+
 ### `step.invoke_and_wait()`
 
 Start a child workflow and suspend until it completes:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
     # Call child and wait for result
@@ -130,10 +206,28 @@ async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
         child_workflow,
         {"data": input.data}
     )
-    
+
     # Parent resumes here with child's result
     return {"child_result": result}
 ```
+
+```typescript TypeScript
+const parentWorkflow = defineWorkflow<ParentInput, void, { childResult: unknown }>(
+  { id: 'parent-workflow' },
+  async (ctx, input) => {
+    // Call child and wait for result
+    const result = await ctx.step.invokeAndWait(
+      'call_child',
+      childWorkflow,
+      { data: input.data }
+    );
+
+    // Parent resumes here with child's result
+    return { childResult: result };
+  }
+);
+```
+</CodeGroup>
 
 **Worker behavior:** The worker suspends the parent workflow (no compute consumed) until the child completes.
 
@@ -141,7 +235,8 @@ async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
 
 Start multiple workflows in parallel without waiting:
 
-```python
+<CodeGroup>
+```python Python
 from polos import BatchWorkflowInput
 
 @workflow
@@ -154,15 +249,38 @@ async def parallel_tasks(ctx: WorkflowContext, input: ParallelInput):
             BatchWorkflowInput(id="log_workflow", payload={"input": input})
         ]
     )
-    
+
     return {"started": len(handles)}
 ```
+
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const parallelTasks = defineWorkflow<ParallelInput, void, { started: number }>(
+  { id: 'parallel-tasks' },
+  async (ctx, input) => {
+    // Start multiple workflows
+    const handles = await ctx.step.batchInvoke(
+      'start_batch',
+      [
+        { workflow: 'task_workflow', payload: { task: 'A' } },
+        { workflow: 'task_workflow', payload: { task: 'B' } },
+        { workflow: 'log_workflow', payload: { input } },
+      ]
+    );
+
+    return { started: handles.length };
+  }
+);
+```
+</CodeGroup>
 
 ### `step.batch_invoke_and_wait()`
 
 Start multiple workflows in parallel and wait for all to complete:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parallel_and_wait(ctx: WorkflowContext, input: ParallelInput):
     # Start batch and wait for all
@@ -173,19 +291,45 @@ async def parallel_and_wait(ctx: WorkflowContext, input: ParallelInput):
             BatchWorkflowInput(id="log_workflow", payload={"input": input})
         ]
     )
-    
+
     # Worker suspends until all complete
     for result in results:
         print(f"Result: {result.result}")
-    
+
     return results
 ```
+
+```typescript TypeScript
+const parallelAndWait = defineWorkflow<ParallelInput, void, unknown[]>(
+  { id: 'parallel-and-wait' },
+  async (ctx, input) => {
+    // Start batch and wait for all
+    const results = await ctx.step.batchInvokeAndWait(
+      'batch_process',
+      [
+        { workflow: 'processor', payload: { item: 'A' } },
+        { workflow: 'processor', payload: { item: 'B' } },
+        { workflow: 'log_workflow', payload: { input } },
+      ]
+    );
+
+    // Worker suspends until all complete
+    for (const result of results) {
+      console.log(`Result: ${result.result}`);
+    }
+
+    return results;
+  }
+);
+```
+</CodeGroup>
 
 ### `step.agent_invoke()`
 
 Start an agent execution without waiting for it to complete:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
     # Start agent execution
@@ -193,17 +337,36 @@ async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
         "research_agent",
         research_agent.with_input(input.query)
     )
-    
+
     # Continue immediately (don't wait)
     print(f"Started agent execution: {handle.id}")
     return {"agent_execution_id": handle.id}
 ```
 
+```typescript TypeScript
+const parentWorkflow = defineWorkflow<ParentInput, void, { agentExecutionId: string }>(
+  { id: 'parent-workflow' },
+  async (ctx, input) => {
+    // Start agent execution
+    const handle = await ctx.step.agentInvoke(
+      'research_agent',
+      researchAgent.withInput(input.query)
+    );
+
+    // Continue immediately (don't wait)
+    console.log(`Started agent execution: ${handle.id}`);
+    return { agentExecutionId: handle.id };
+  }
+);
+```
+</CodeGroup>
+
 ### `step.agent_invoke_and_wait()`
 
 Start an agent execution and suspend until it completes:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def review_workflow(ctx: WorkflowContext, input: ReviewInput):
     # Call agent and wait for result
@@ -211,10 +374,27 @@ async def review_workflow(ctx: WorkflowContext, input: ReviewInput):
         "grammar_review_agent_invoke",
         grammar_review_agent.with_input(input.text)
     )
-    
+
     # Parent resumes here with agent's response
     return {"review": response.result}
 ```
+
+```typescript TypeScript
+const reviewWorkflow = defineWorkflow<ReviewInput, void, { review: unknown }>(
+  { id: 'review-workflow' },
+  async (ctx, input) => {
+    // Call agent and wait for result
+    const response = await ctx.step.agentInvokeAndWait(
+      'grammar_review_agent_invoke',
+      grammarReviewAgent.withInput(input.text)
+    );
+
+    // Parent resumes here with agent's response
+    return { review: response.result };
+  }
+);
+```
+</CodeGroup>
 
 **Worker behavior:** The worker suspends the parent workflow (no compute consumed) until the agent completes.
 
@@ -222,7 +402,8 @@ async def review_workflow(ctx: WorkflowContext, input: ReviewInput):
 
 Start multiple agent executions in parallel without waiting:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parallel_agents(ctx: WorkflowContext, input: ParallelInput):
     # Start multiple agents
@@ -234,15 +415,36 @@ async def parallel_agents(ctx: WorkflowContext, input: ParallelInput):
             accuracy_review_agent.with_input(input.text),
         ]
     )
-    
+
     return {"started": len(handles)}
 ```
+
+```typescript TypeScript
+const parallelAgents = defineWorkflow<ParallelInput, void, { started: number }>(
+  { id: 'parallel-agents' },
+  async (ctx, input) => {
+    // Start multiple agents
+    const handles = await ctx.step.batchAgentInvoke(
+      'start_batch_agents',
+      [
+        grammarReviewAgent.withInput(input.text),
+        toneReviewAgent.withInput(input.text),
+        accuracyReviewAgent.withInput(input.text),
+      ]
+    );
+
+    return { started: handles.length };
+  }
+);
+```
+</CodeGroup>
 
 ### `step.batch_agent_invoke_and_wait()`
 
 Start multiple agent executions in parallel and wait for all to complete:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parallel_reviews(ctx: WorkflowContext, input: ReviewInput):
     # Run three review agents in parallel
@@ -254,28 +456,69 @@ async def parallel_reviews(ctx: WorkflowContext, input: ReviewInput):
             accuracy_review_agent.with_input(input.text),
         ]
     )
-    
+
     # Worker suspends until all agents complete
     for result in results:
         print(f"Review result: {result.result}")
-    
+
     return results
 ```
+
+```typescript TypeScript
+const parallelReviews = defineWorkflow<ReviewInput, void, unknown[]>(
+  { id: 'parallel-reviews' },
+  async (ctx, input) => {
+    // Run three review agents in parallel
+    const results = await ctx.step.batchAgentInvokeAndWait(
+      'batch_invoke_grammar_tone_accuracy_reviews',
+      [
+        grammarReviewAgent.withInput(input.text),
+        toneConsistencyReviewAgent.withInput(input.text),
+        accuracyReviewAgent.withInput(input.text),
+      ]
+    );
+
+    // Worker suspends until all agents complete
+    for (const result of results) {
+      console.log(`Review result: ${result.result}`);
+    }
+
+    return results;
+  }
+);
+```
+</CodeGroup>
 
 ### `step.wait_for()`
 
 Pause execution for a duration:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def delayed_workflow(ctx: WorkflowContext, input: dict):
     # Wait 1 hour (worker suspends, no compute cost)
     await ctx.step.wait_for("wait_1_hour", hours=1)
-    
+
     # Resume after 1 hour
     result = await ctx.step.run("process", process_data, input)
     return result
 ```
+
+```typescript TypeScript
+const delayedWorkflow = defineWorkflow<Record<string, unknown>, void, unknown>(
+  { id: 'delayed-workflow' },
+  async (ctx, input) => {
+    // Wait 1 hour (worker suspends, no compute cost)
+    await ctx.step.waitFor('wait_1_hour', { hours: 1 });
+
+    // Resume after 1 hour
+    const result = await ctx.step.run('process', () => processData(input));
+    return result;
+  }
+);
+```
+</CodeGroup>
 
 **Available units:** `seconds`, `minutes`, `hours`, `days`, `weeks`
 
@@ -283,52 +526,93 @@ async def delayed_workflow(ctx: WorkflowContext, input: dict):
 
 Wait until a specific datetime:
 
-```python
+<CodeGroup>
+```python Python
 from datetime import datetime, timezone
 
 @workflow
 async def scheduled_action(ctx: WorkflowContext, input: dict):
     # Schedule for specific time
     target_time = datetime(2025, 12, 31, 23, 59, 0, tzinfo=timezone.utc)
-    
+
     await ctx.step.wait_until("wait_until_new_year", target_time)
-    
+
     # Executes at 23:59 on Dec 31, 2025
     await ctx.step.run("celebrate", send_celebration)
 ```
+
+```typescript TypeScript
+const scheduledAction = defineWorkflow<Record<string, unknown>, void, void>(
+  { id: 'scheduled-action' },
+  async (ctx, input) => {
+    // Schedule for specific time
+    const targetTime = new Date('2025-12-31T23:59:00Z');
+
+    await ctx.step.waitUntil('wait_until_new_year', targetTime);
+
+    // Executes at 23:59 on Dec 31, 2025
+    await ctx.step.run('celebrate', () => sendCelebration());
+  }
+);
+```
+</CodeGroup>
 
 ### `step.wait_for_event()`
 
 Wait for an external event:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def approval_workflow(ctx: WorkflowContext, input: dict):
     # Submit for user confirmation
     await ctx.step.run("submit", submit_for_user_confirmation, input)
-    
+
     # Wait for user.confirmation event (hours or days)
     approval = await ctx.step.wait_for_event(
         "user_confirmation",
         topic="user.confirmation",
         timeout=86400  # 24 hour timeout
     )
-    
+
     # Resume when event arrives
     if approval.data["approved"]:
         await ctx.step.run("execute", execute_action, input)
 ```
 
+```typescript TypeScript
+const approvalWorkflow = defineWorkflow<Record<string, unknown>, void, void>(
+  { id: 'approval-workflow' },
+  async (ctx, input) => {
+    // Submit for user confirmation
+    await ctx.step.run('submit', () => submitForUserConfirmation(input));
+
+    // Wait for user.confirmation event (hours or days)
+    const approval = await ctx.step.waitForEvent(
+      'user_confirmation',
+      { topic: 'user.confirmation', timeout: 86400 }  // 24 hour timeout
+    );
+
+    // Resume when event arrives
+    if (approval.data.approved) {
+      await ctx.step.run('execute', () => executeAction(input));
+    }
+  }
+);
+```
+</CodeGroup>
+
 ### `step.suspend()`
 
 Suspend execution and wait for manual resume. This is syntactic sugar around `wait_for_event` that's tailored for agent human-in-the-loop flows.
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def manual_approval(ctx: WorkflowContext, input: dict):
     # Prepare action
     action = await ctx.step.run("prepare", prepare_action, input)
-    
+
     # Suspend with context data
     resume_data = await ctx.step.suspend(
         "approval",
@@ -345,18 +629,48 @@ async def manual_approval(ctx: WorkflowContext, input: dict):
         await ctx.step.run("execute", execute_action, action)
 ```
 
+```typescript TypeScript
+const manualApproval = defineWorkflow<Record<string, unknown>, void, void>(
+  { id: 'manual-approval' },
+  async (ctx, input) => {
+    // Prepare action
+    const action = await ctx.step.run('prepare', () => prepareAction(input));
+
+    // Suspend with context data
+    const resumeData = await ctx.step.suspend(
+      'approval',
+      {
+        data: {
+          action: action.description,
+          cost: action.estimatedCost,
+        },
+        timeout: 3600,  // 1 hour timeout
+      }
+    );
+
+    // Resume with approval decision
+    const decision = resumeData?.data ?? {};
+    if (decision.approved) {
+      await ctx.step.run('execute', () => executeAction(action));
+    }
+  }
+);
+```
+</CodeGroup>
+
 See [Human-in-the-Loop](/agents/human-in-the-loop) for details.
 
 ### `step.publish_event()`
 
 Publish events durably:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def event_publisher(ctx: WorkflowContext, input: dict):
     # Process data
     result = await ctx.step.run("process", process_data, input)
-    
+
     # Publish event (guaranteed once)
     await ctx.step.publish_event(
         "notify_complete",
@@ -366,25 +680,64 @@ async def event_publisher(ctx: WorkflowContext, input: dict):
     )
 ```
 
+```typescript TypeScript
+const eventPublisher = defineWorkflow<Record<string, unknown>, void, void>(
+  { id: 'event-publisher' },
+  async (ctx, input) => {
+    // Process data
+    const result = await ctx.step.run('process', () => processData(input));
+
+    // Publish event (guaranteed once)
+    await ctx.step.publishEvent(
+      'notify_complete',
+      {
+        topic: 'processing.completed',
+        data: { result },
+        type: 'completion',
+      }
+    );
+  }
+);
+```
+</CodeGroup>
+
 ### `step.uuid()`
 
 Generate a UUID that persists across replays:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def create_entity(ctx: WorkflowContext, input: dict):
     # Generate stable UUID (same on replay)
     entity_id = await ctx.step.uuid("entity_id")
-    
+
     # Use the generated UUID in API calls
     await ctx.step.run("create", create_in_api, entity_id, input)
-    
+
     return {"id": entity_id}
 ```
 
+```typescript TypeScript
+const createEntity = defineWorkflow<Record<string, unknown>, void, { id: string }>(
+  { id: 'create-entity' },
+  async (ctx, input) => {
+    // Generate stable UUID (same on replay)
+    const entityId = await ctx.step.uuid('entity_id');
+
+    // Use the generated UUID in API calls
+    await ctx.step.run('create', () => createInApi(entityId, input));
+
+    return { id: entityId };
+  }
+);
+```
+</CodeGroup>
+
 **Why this matters:**
 
-```python
+<CodeGroup>
+```python Python
 # ❌ BAD: New UUID on each replay
 entity_id = str(uuid.uuid4())  # Different every time
 await ctx.step.run("create", create_entity, entity_id)
@@ -394,16 +747,28 @@ entity_id = await ctx.step.uuid("entity_id")  # Cached
 await ctx.step.run("create", create_entity, entity_id)
 ```
 
+```typescript TypeScript
+// ❌ BAD: New UUID on each replay
+const entityId = crypto.randomUUID();  // Different every time
+await ctx.step.run('create', () => createEntity(entityId));
+
+// ✅ GOOD: Same UUID on replay
+const entityId = await ctx.step.uuid('entity_id');  // Cached
+await ctx.step.run('create', () => createEntity(entityId));
+```
+</CodeGroup>
+
 ### `step.now()`
 
 Get current timestamp that persists across replays:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def timestamped_workflow(ctx: WorkflowContext, input: dict):
     # Get stable timestamp (same on replay)
     created_at = await ctx.step.now("created_at")
-    
+
     # Use in conditional logic
     if created_at % 2 == 0:
         await ctx.step.run("even_path", process_even)
@@ -411,40 +776,98 @@ async def timestamped_workflow(ctx: WorkflowContext, input: dict):
         await ctx.step.run("odd_path", process_odd)
 ```
 
+```typescript TypeScript
+const timestampedWorkflow = defineWorkflow<Record<string, unknown>, void, void>(
+  { id: 'timestamped-workflow' },
+  async (ctx, input) => {
+    // Get stable timestamp (same on replay)
+    const createdAt = await ctx.step.now('created_at');
+
+    // Use in conditional logic
+    if (createdAt % 2 === 0) {
+      await ctx.step.run('even_path', () => processEven());
+    } else {
+      await ctx.step.run('odd_path', () => processOdd());
+    }
+  }
+);
+```
+</CodeGroup>
+
 ### `step.trace()`
 
 Add custom spans for observability:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def monitored_workflow(ctx: WorkflowContext, input: dict):
     # Custom span for database operations
     with ctx.step.trace("database_query", {"table": "users", "limit": 100}):
         users = await db.query("SELECT * FROM users LIMIT 100")
-    
+
     # Custom span for external API
     with ctx.step.trace("external_api", {"endpoint": "/data"}):
         data = await api.fetch("/data")
-    
+
     return {"users": len(users), "data": data}
 ```
+
+```typescript TypeScript
+const monitoredWorkflow = defineWorkflow<Record<string, unknown>, void, { users: number; data: unknown }>(
+  { id: 'monitored-workflow' },
+  async (ctx, input) => {
+    // Custom span for database operations
+    const dbSpan = ctx.step.trace('database_query', { table: 'users', limit: 100 });
+    const users = await db.query('SELECT * FROM users LIMIT 100');
+    dbSpan.end();
+
+    // Custom span for external API
+    const apiSpan = ctx.step.trace('external_api', { endpoint: '/data' });
+    const data = await api.fetch('/data');
+    apiSpan.end();
+
+    return { users: users.length, data };
+  }
+);
+```
+</CodeGroup>
 
 See [Tracing](/observability/tracing) for details.
 
 ## Step keys must be unique
 Each step needs a unique `step_key` per execution:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def process_items(ctx: WorkflowContext, input: dict):
     # ❌ BAD: Same key in loop
     for item in input.items:
         await ctx.step.run("process", process_item, item)  # Collision!
-    
+
     # ✅ GOOD: Unique key per iteration
     for i, item in enumerate(input.items):
         await ctx.step.run(f"process_{i}", process_item, item)
 ```
+
+```typescript TypeScript
+const processItems = defineWorkflow<{ items: unknown[] }, void, void>(
+  { id: 'process-items' },
+  async (ctx, input) => {
+    // ❌ BAD: Same key in loop
+    for (const item of input.items) {
+      await ctx.step.run('process', () => processItem(item));  // Collision!
+    }
+
+    // ✅ GOOD: Unique key per iteration
+    for (let i = 0; i < input.items.length; i++) {
+      await ctx.step.run(`process_${i}`, () => processItem(input.items[i]));
+    }
+  }
+);
+```
+</CodeGroup>
 
 ## Agents and steps
 

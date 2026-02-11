@@ -9,7 +9,9 @@ Conversation memory enables agents to maintain context across multiple interacti
 
 Set `conversation_history` to specify how many previous messages to retain:
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent
 
 conversational_agent = Agent(
@@ -21,6 +23,20 @@ conversational_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent } from "@polos/sdk";
+import { openai } from "@ai-sdk/openai";
+
+const conversationalAgent = defineAgent({
+  id: "chat-agent",
+  model: openai("gpt-4o"),
+  systemPrompt: "You are a helpful assistant. Be friendly and concise.",
+  conversationHistory: 10, // Keep last 10 messages (i.e. 5 conversation turns)
+});
+```
+
+</CodeGroup>
+
 The agent automatically manages conversation history - no manual bookkeeping required.
 **Defaults to conversation_history=10** when you don't specify anything.
 
@@ -30,7 +46,9 @@ Group related messages using `conversation_id`.
 
 Works with `agent.run()`:
 
-```python
+<CodeGroup>
+
+```python Python
 client = PolosClient()
 result = await research_agent.run(
     client,
@@ -39,14 +57,38 @@ result = await research_agent.run(
 )
 ```
 
+```typescript TypeScript
+const client = PolosClient.fromEnv();
+const result = await researchAgent.run(
+  client,
+  userMessage,
+  { conversationId }
+);
+```
+
+</CodeGroup>
+
 and `agent.stream()`:
-```python
+
+<CodeGroup>
+
+```python Python
 stream = await research_agent.stream(
     client,
     user_message,
     conversation_id=conversation_id
 )
 ```
+
+```typescript TypeScript
+const stream = await researchAgent.stream(
+  client,
+  userMessage,
+  { conversationId }
+);
+```
+
+</CodeGroup>
 
 
 **How it works:**
@@ -57,7 +99,9 @@ stream = await research_agent.stream(
 
 ## Example
 
-```python
+<CodeGroup>
+
+```python Python
 import asyncio
 from polos import PolosClient
 
@@ -72,7 +116,7 @@ async def main():
         conversation_id=conversation_id
     )
     print(response1.result)
-    
+
     # Turn 2 - Agent remembers Alice and Python
     response2 = await my_agent.run(
         client,
@@ -80,7 +124,7 @@ async def main():
         conversation_id=conversation_id
     )
     print(response2.result)  # "Your favorite programming language is Python"
-    
+
     # Turn 3 - Agent remembers the name
     response3 = await my_agent.run(
         client,
@@ -93,17 +137,66 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript TypeScript
+import { PolosClient } from "@polos/sdk";
+
+async function main() {
+  const conversationId = "user-123-session-1";
+  const client = PolosClient.fromEnv();
+
+  // Turn 1
+  const response1 = await myAgent.run(
+    client,
+    "My name is Alice and I love Python.",
+    { conversationId }
+  );
+  console.log(response1.result);
+
+  // Turn 2 - Agent remembers Alice and Python
+  const response2 = await myAgent.run(
+    client,
+    "What's my favorite programming language?",
+    { conversationId }
+  );
+  console.log(response2.result); // "Your favorite programming language is Python"
+
+  // Turn 3 - Agent remembers the name
+  const response3 = await myAgent.run(
+    client,
+    "What's my name?",
+    { conversationId }
+  );
+  console.log(response3.result); // "Your name is Alice"
+}
+
+main();
+```
+
+</CodeGroup>
+
 ## History limits
 
 The `conversation_history` parameter controls the maximum number of messages retained:
 
-```python
+<CodeGroup>
+
+```python Python
 # Keep last 20 messages
 agent = Agent(
     id="agent",
     conversation_history=20
 )
 ```
+
+```typescript TypeScript
+// Keep last 20 messages
+const agent = defineAgent({
+  id: "agent",
+  conversationHistory: 20,
+});
+```
+
+</CodeGroup>
 
 **What happens when the limit is exceeded:**
 

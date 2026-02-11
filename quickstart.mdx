@@ -6,7 +6,7 @@ icon: "rocket"
 
 ## Prerequisites
 
-- Python 3.10 or higher
+- Python 3.10+ or Node.js 18+
 - Postgres database
 - An [OpenAI API key](https://platform.openai.com/api-keys)
 
@@ -62,12 +62,21 @@ If Polos has already been initialized, update `~/.polos/config.toml` with the ne
 
 Clone the weather agent example:
 
-```bash
+<CodeGroup>
+
+```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/01-agent-with-tools
 ```
 
-Or view the [source on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-agent-with-tools).
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/01-agent-with-tools
+```
+
+</CodeGroup>
+
+[Python source on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-agent-with-tools) | [TypeScript source on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/01-agent-with-tools)
 
 ## Set up your environment
 
@@ -87,23 +96,29 @@ POLOS_DEPLOYMENT_ID=agent-with-tools-examples   # Deployment ID for this worker
 OPENAI_API_KEY=sk-...              # Your OpenAI API key
 ```
 
-Install Python dependencies:
+Install dependencies:
 
-```bash
+<CodeGroup>
+
+```bash Python
 pip install polos-sdk[openai] python-dotenv
-```
-
-Or with [uv](https://docs.astral.sh/uv/):
-
-```bash
+# Or with uv:
 uv sync
 ```
+
+```bash TypeScript
+npm install
+```
+
+</CodeGroup>
 
 ## Understand the code
 
 The example has three main files:
 
-<CodeGroup>
+<Tabs>
+  <Tab title="Python">
+    <CodeGroup>
 
 ```python agents.py
 from polos import Agent, max_steps, MaxStepsConfig
@@ -213,7 +228,129 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-</CodeGroup>
+    </CodeGroup>
+  </Tab>
+  <Tab title="TypeScript">
+    <CodeGroup>
+
+```typescript agents.ts
+import { defineAgent, maxSteps } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+import { getWeather } from './tools.js';
+
+// Define an agent with a tool
+export const weatherAgent = defineAgent({
+  id: 'weather_agent',
+  model: openai('gpt-4o-mini'),
+  systemPrompt:
+    'You are a helpful weather assistant. Use the get_weather tool to look up weather information when asked.',
+  tools: [getWeather],
+  stopConditions: [maxSteps({ count: 10 })],
+});
+```
+
+```typescript tools.ts
+import { defineTool, type WorkflowContext } from '@polos/sdk';
+import { z } from 'zod';
+
+const weatherInputSchema = z.object({
+  city: z.string(),
+});
+
+const weatherOutputSchema = z.object({
+  city: z.string(),
+  temperature: z.number(),
+  condition: z.string(),
+  humidity: z.number(),
+  wind_speed: z.number(),
+  unit: z.string(),
+  error: z.string().nullable().optional(),
+});
+
+type WeatherInput = z.infer<typeof weatherInputSchema>;
+type WeatherOutput = z.infer<typeof weatherOutputSchema>;
+
+export const getWeather = defineTool(
+  {
+    id: 'get_weather',
+    description: 'Get the current weather information for a given city',
+    inputSchema: weatherInputSchema,
+    outputSchema: weatherOutputSchema,
+  },
+  async (_ctx: WorkflowContext, input: WeatherInput): Promise<WeatherOutput> => {
+    // In production, this would call a real weather API
+    const weatherData: Record<string, WeatherOutput> = {
+      'new york': { city: 'New York', temperature: 72, condition: 'Partly Cloudy', humidity: 65, wind_speed: 10, unit: 'F', error: null },
+      'london': { city: 'London', temperature: 15, condition: 'Rainy', humidity: 85, wind_speed: 12, unit: 'C', error: null },
+    };
+
+    const city = input.city.trim().toLowerCase();
+    const weather = weatherData[city];
+
+    if (!weather) {
+      return { city: city, temperature: 0, condition: 'Unknown', humidity: 0, wind_speed: 0, unit: 'C', error: `Weather data not available for '${city}'.` };
+    }
+
+    return weather;
+  },
+);
+```
+
+```typescript worker.ts
+import 'dotenv/config';
+import { Worker } from '@polos/sdk';
+import { getWeather } from './tools.js';
+import { weatherAgent } from './agents.js';
+
+async function main() {
+  const projectId = process.env['POLOS_PROJECT_ID'];
+  if (!projectId) {
+    throw new Error('POLOS_PROJECT_ID environment variable is required.');
+  }
+
+  const worker = new Worker({
+    apiUrl: process.env['POLOS_API_URL'] ?? 'http://localhost:8080',
+    projectId,
+    deploymentId: 'typescript-examples',
+    workflows: [weatherAgent, getWeather],
+  });
+
+  console.log('Starting worker...');
+  await worker.run();
+}
+
+main().catch(console.error);
+```
+
+```typescript main.ts
+import 'dotenv/config';
+import { PolosClient } from '@polos/sdk';
+import { weatherAgent } from './agents.js';
+
+async function main() {
+  const projectId = process.env['POLOS_PROJECT_ID'];
+  if (!projectId) {
+    throw new Error('POLOS_PROJECT_ID environment variable is required.');
+  }
+
+  const client = new PolosClient({
+    projectId,
+    apiUrl: process.env['POLOS_API_URL'] ?? 'http://localhost:8080',
+  });
+
+  console.log('Invoking weather_agent...');
+  const result = await weatherAgent.run(client, {
+    input: "What's the weather like in New York?",
+  });
+  console.log(result.result);
+}
+
+main().catch(console.error);
+```
+
+    </CodeGroup>
+  </Tab>
+</Tabs>
 
 ## Run the agent
 

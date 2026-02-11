@@ -31,7 +31,8 @@ Queues solve common concurrency challenges:
 
 Every workflow automatically gets its own queue:
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow
@@ -41,6 +42,21 @@ async def process_data(ctx: WorkflowContext, input: dict):
     result = await ctx.step.run("process", process, input)
     return result
 ```
+
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const processData = defineWorkflow<dict, void, any>(
+  { id: 'process-data' },
+  async (ctx, input) => {
+    // Automatically assigned to queue named "process-data"
+    // Default concurrency limit from environment
+    const result = await ctx.step.run('process', () => process(input));
+    return result;
+  }
+);
+```
+</CodeGroup>
 
 **Default queue properties:**
 
@@ -52,7 +68,8 @@ async def process_data(ctx: WorkflowContext, input: dict):
 
 Set a specific concurrency limit for a workflow
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue={"concurrency_limit": 3})
 async def rate_limited_workflow(ctx: WorkflowContext, input: dict):
     # Only 3 instances run at once
@@ -61,11 +78,27 @@ async def rate_limited_workflow(ctx: WorkflowContext, input: dict):
     return {"status": "completed"}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const rateLimitedWorkflow = defineWorkflow<dict, void, { status: string }>(
+  { id: 'rate-limited-workflow', queue: { concurrencyLimit: 3 } },
+  async (ctx, input) => {
+    // Only 3 instances run at once
+    // Additional invocations queue until a slot opens
+    await ctx.step.run('call_api', () => callExternalApi(input));
+    return { status: 'completed' };
+  }
+);
+```
+</CodeGroup>
+
 ## Shared queues
 
 Multiple workflows can share the same queue
 
-```python
+<CodeGroup>
+```python Python
 from polos import queue
 
 # Create a shared queue
@@ -85,6 +118,33 @@ async def gpt_analyzer(ctx: WorkflowContext, input: AnalyzerInput):
 # Combined max 5 concurrent executions across both workflows
 ```
 
+```typescript TypeScript
+import { Queue, defineWorkflow } from '@polos/sdk';
+
+// Create a shared queue
+const openaiQueue = new Queue('openai-api', { concurrencyLimit: 5 });
+
+const gptSummarizer = defineWorkflow<SummarizerInput, void, string>(
+  { id: 'gpt-summarizer', queue: openaiQueue },
+  async (ctx, input) => {
+    const summary = await ctx.step.run('summarize', () => callOpenaiGpt(input.text));
+    return summary;
+  }
+);
+
+const gptAnalyzer = defineWorkflow<AnalyzerInput, void, string>(
+  { id: 'gpt-analyzer', queue: openaiQueue },
+  async (ctx, input) => {
+    const analysis = await ctx.step.run('analyze', () => callOpenaiGpt(input.data));
+    return analysis;
+  }
+);
+
+// Both workflows share the "openai-api" queue
+// Combined max 5 concurrent executions across both workflows
+```
+</CodeGroup>
+
 **Use cases for shared queues:**
 
 - Rate-limit API calls across multiple workflows
@@ -95,7 +155,8 @@ async def gpt_analyzer(ctx: WorkflowContext, input: AnalyzerInput):
 
 ### 1. Inline configuration
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue={"concurrency_limit": 10})
 async def inline_config(ctx: WorkflowContext, input: dict):
     # Queue name = "inline-config" (workflow ID)
@@ -103,9 +164,23 @@ async def inline_config(ctx: WorkflowContext, input: dict):
     pass
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const inlineConfig = defineWorkflow<dict, void, void>(
+  { id: 'inline-config', queue: { concurrencyLimit: 10 } },
+  async (ctx, input) => {
+    // Queue name = "inline-config" (workflow ID)
+    // Concurrency limit = 10
+  }
+);
+```
+</CodeGroup>
+
 ### 2. Queue name only
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue="processing-queue")
 async def named_queue(ctx: WorkflowContext, input: dict):
     # Queue name = "processing-queue"
@@ -113,9 +188,23 @@ async def named_queue(ctx: WorkflowContext, input: dict):
     pass
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const namedQueue = defineWorkflow<dict, void, void>(
+  { id: 'named-queue', queue: 'processing-queue' },
+  async (ctx, input) => {
+    // Queue name = "processing-queue"
+    // Concurrency limit = default from environment
+  }
+);
+```
+</CodeGroup>
+
 ### 3. Queue object
 
-```python
+<CodeGroup>
+```python Python
 from polos import queue
 
 priority_queue = queue("priority", concurrency_limit=3)
@@ -127,11 +216,27 @@ async def priority_workflow(ctx: WorkflowContext, input: dict):
     pass
 ```
 
+```typescript TypeScript
+import { Queue, defineWorkflow } from '@polos/sdk';
+
+const priorityQueue = new Queue('priority', { concurrencyLimit: 3 });
+
+const priorityWorkflow = defineWorkflow<dict, void, void>(
+  { id: 'priority-workflow', queue: priorityQueue },
+  async (ctx, input) => {
+    // Queue name = "priority"
+    // Concurrency limit = 3
+  }
+);
+```
+</CodeGroup>
+
 ## Per-entity queuing (Concurrency keys)
 
 Use concurrency keys to create separate queues per user, tenant, or entity:
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue="user-tasks")
 async def user_task(ctx: WorkflowContext, input: dict):
     # Process user-specific task
@@ -147,6 +252,28 @@ await user_task.invoke(
 )
 ```
 
+```typescript TypeScript
+import { PolosClient, defineWorkflow } from '@polos/sdk';
+
+const userTask = defineWorkflow<dict, void, { status: string }>(
+  { id: 'user-task', queue: 'user-tasks' },
+  async (ctx, input) => {
+    // Process user-specific task
+    await ctx.step.run('process', () => processUserTask(input));
+    return { status: 'completed' };
+  }
+);
+
+// Invoke with concurrencyKey
+const client = PolosClient.fromEnv();
+await userTask.invoke(
+  client,
+  { task: 'data' },
+  { concurrencyKey: `user:${userId}` }  // Separate queue per user
+);
+```
+</CodeGroup>
+
 **How it works:**
 
 - Each unique `concurrency_key` gets its own virtual queue
@@ -155,7 +282,8 @@ await user_task.invoke(
 
 **Example: Per-user rate limiting**
 
-```python
+<CodeGroup>
+```python Python
 # User A can have 5 concurrent tasks
 await user_task.invoke(client, payload={...}, concurrency_key="user:alice")
 await user_task.invoke(client, payload={...}, concurrency_key="user:alice")
@@ -166,11 +294,24 @@ await user_task.invoke(client, payload={...}, concurrency_key="user:bob")
 await user_task.invoke(client, payload={...}, concurrency_key="user:bob")
 ```
 
+```typescript TypeScript
+// User A can have 5 concurrent tasks
+await userTask.invoke(client, { /* ... */ }, { concurrencyKey: 'user:alice' });
+await userTask.invoke(client, { /* ... */ }, { concurrencyKey: 'user:alice' });
+await userTask.invoke(client, { /* ... */ }, { concurrencyKey: 'user:alice' });
+
+// User B also gets 5 concurrent slots (independent from User A)
+await userTask.invoke(client, { /* ... */ }, { concurrencyKey: 'user:bob' });
+await userTask.invoke(client, { /* ... */ }, { concurrencyKey: 'user:bob' });
+```
+</CodeGroup>
+
 ## Serial execution
 
 Force workflows to run one at a time:
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue={"concurrency_limit": 1})
 async def serial_workflow(ctx: WorkflowContext, input: dict):
     # Only 1 instance runs at a time
@@ -178,6 +319,21 @@ async def serial_workflow(ctx: WorkflowContext, input: dict):
     await ctx.step.run("critical_section", critical_operation, input)
     return {"status": "completed"}
 ```
+
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const serialWorkflow = defineWorkflow<dict, void, { status: string }>(
+  { id: 'serial-workflow', queue: { concurrencyLimit: 1 } },
+  async (ctx, input) => {
+    // Only 1 instance runs at a time
+    // Perfect for operations that must not overlap
+    await ctx.step.run('critical_section', () => criticalOperation(input));
+    return { status: 'completed' };
+  }
+);
+```
+</CodeGroup>
 
 **Use cases:**
 
@@ -189,7 +345,8 @@ async def serial_workflow(ctx: WorkflowContext, input: dict):
 
 ### Queuing and execution
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue={"concurrency_limit": 2})
 async def limited_workflow(ctx: WorkflowContext, input: dict):
     await ctx.step.run("work", do_work, input)
@@ -199,7 +356,28 @@ async def limited_workflow(ctx: WorkflowContext, input: dict):
 client = PolosClient()
 for i in range(5):
     await limited_workflow.invoke(client, {"id": i})
+```
 
+```typescript TypeScript
+import { PolosClient, defineWorkflow } from '@polos/sdk';
+
+const limitedWorkflow = defineWorkflow<dict, void, { done: boolean }>(
+  { id: 'limited-workflow', queue: { concurrencyLimit: 2 } },
+  async (ctx, input) => {
+    await ctx.step.run('work', () => doWork(input));
+    return { done: true };
+  }
+);
+
+// Invoke 5 times
+const client = PolosClient.fromEnv();
+for (let i = 0; i < 5; i++) {
+  await limitedWorkflow.invoke(client, { id: i });
+}
+```
+</CodeGroup>
+
+```
 # Execution timeline:
 # Time 0: Workflow 1 starts, Workflow 2 starts (limit = 2)
 # Time 0: Workflow 3, 4, 5 queued
@@ -218,7 +396,8 @@ for i in range(5):
 
 Override queue at invocation time:
 
-```python
+<CodeGroup>
+```python Python
 @workflow(queue="default-queue")
 async def flexible_workflow(ctx: WorkflowContext, input: dict):
     await ctx.step.run("process", process_data, input)
@@ -235,6 +414,30 @@ await flexible_workflow.invoke(
     queue="priority-queue"
 )
 ```
+
+```typescript TypeScript
+import { PolosClient, defineWorkflow } from '@polos/sdk';
+
+const flexibleWorkflow = defineWorkflow<dict, void, { status: string }>(
+  { id: 'flexible-workflow', queue: 'default-queue' },
+  async (ctx, input) => {
+    await ctx.step.run('process', () => processData(input));
+    return { status: 'completed' };
+  }
+);
+
+// Use default queue
+const client = PolosClient.fromEnv();
+await flexibleWorkflow.invoke(client, { data: '...' });
+
+// Override with different queue
+await flexibleWorkflow.invoke(
+  client,
+  { data: '...' },
+  { queue: 'priority-queue' }
+);
+```
+</CodeGroup>
 
 ## Queue restriction
 

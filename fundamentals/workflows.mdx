@@ -9,29 +9,61 @@ Workflow is the core building block in Polos. A workflow is durable code - it su
 
 A workflow is a Python function decorated with `@workflow`. It receives a `WorkflowContext` (ctx) and your input data.
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow
 async def research(ctx: WorkflowContext, input: ResearchInput):
     # Step 1: Search for information
     results = await ctx.step.run("search_web", search_web, input.topic)
-    
+
     # Step 2: Analyze results (dynamic logic)
     if len(results) > 10:
         summary = await ctx.step.run("summarize", summarize_results, results)
     else:
         summary = await ctx.step.run("detailed_analysis", detailed_analysis, results)
-    
+
     # Step 3: Generate report
     report = await ctx.step.run("generate_report", generate_report, summary)
-    
+
     return report
 
 async def search_web(query: str):
     response = await http_client.get(f"https://api.search.com?q={query}")
     return response.json()
 ```
+
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const research = defineWorkflow<ResearchInput, void, Report>(
+  { id: 'research' },
+  async (ctx, input) => {
+    // Step 1: Search for information
+    const results = await ctx.step.run('search_web', () => searchWeb(input.topic));
+
+    // Step 2: Analyze results (dynamic logic)
+    let summary;
+    if (results.length > 10) {
+      summary = await ctx.step.run('summarize', () => summarizeResults(results));
+    } else {
+      summary = await ctx.step.run('detailed_analysis', () => detailedAnalysis(results));
+    }
+
+    // Step 3: Generate report
+    const report = await ctx.step.run('generate_report', () => generateReport(summary));
+
+    return report;
+  }
+);
+
+async function searchWeb(query: string) {
+  const response = await httpClient.get(`https://api.search.com?q=${query}`);
+  return response.json();
+}
+```
+</CodeGroup>
 
 Let's unpack what's happening here:
 
@@ -48,7 +80,8 @@ Steps are how Polos achieves durability. Each step has a unique **step key** (li
 
 **Critical rule:** Each step in a workflow must have a unique step key. In loops, use variables:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def process_items(ctx: WorkflowContext, input: Input):
     # ✅ GOOD: Unique step key per iteration
@@ -56,11 +89,25 @@ async def process_items(ctx: WorkflowContext, input: Input):
         await ctx.step.run(f"process_{i}", process_item, item)
 ```
 
+```typescript TypeScript
+const processItems = defineWorkflow<Input, void, void>(
+  { id: 'process-items' },
+  async (ctx, input) => {
+    // ✅ GOOD: Unique step key per iteration
+    for (let i = 0; i < input.items.length; i++) {
+      await ctx.step.run(`process_${i}`, () => processItem(input.items[i]));
+    }
+  }
+);
+```
+</CodeGroup>
+
 # Workflow composition
 
 Workflows can invoke other workflows. The parent suspends while children execute - no compute is consumed during waits.
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
     # Invoke child and wait for result
@@ -69,24 +116,43 @@ async def parent_workflow(ctx: WorkflowContext, input: ParentInput):
         child_workflow,
         ChildInput(message="Hello!")
     )
-    
+
     # Parent resumes here with result
     return result
 ```
+
+```typescript TypeScript
+const parentWorkflow = defineWorkflow<ParentInput, void, Result>(
+  { id: 'parent-workflow' },
+  async (ctx, input) => {
+    // Invoke child and wait for result
+    const result = await ctx.step.invokeAndWait(
+      'call_child',
+      childWorkflow,
+      { message: 'Hello!' }
+    );
+
+    // Parent resumes here with result
+    return result;
+  }
+);
+```
+</CodeGroup>
 
 # Waiting
 
 Workflows can pause for time or events. Workers suspend during waits consuming no compute.
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def approval_workflow(ctx: WorkflowContext, input: Input):
     # Request approval
     await ctx.step.run("request", request_approval, input.data)
-    
+
     # Wait for event (hours or days) - no compute consumed
     decision = await ctx.step.wait_for_event("wait_approval", topic=f"approval/{input.id}")
-    
+
     # Resumes here when event arrives
     if decision.data["approved"]:
         await ctx.step.run("execute", execute_action, input.data)
@@ -94,31 +160,82 @@ async def approval_workflow(ctx: WorkflowContext, input: Input):
         await ctx.step.run("handle_rejection", handle_rejection, decision.data)
 ```
 
+```typescript TypeScript
+const approvalWorkflow = defineWorkflow<Input, void, void>(
+  { id: 'approval-workflow' },
+  async (ctx, input) => {
+    // Request approval
+    await ctx.step.run('request', () => requestApproval(input.data));
+
+    // Wait for event (hours or days) - no compute consumed
+    const decision = await ctx.step.waitForEvent('wait_approval', {
+      topic: `approval/${input.id}`,
+    });
+
+    // Resumes here when event arrives
+    if (decision.data.approved) {
+      await ctx.step.run('execute', () => executeAction(input.data));
+    } else {
+      await ctx.step.run('handle_rejection', () => handleRejection(decision.data));
+    }
+  }
+);
+```
+</CodeGroup>
+
 # Starting workflows
 
 Workflows can be triggered in three ways:
 
 **1. Direct invocation**
 
-```python
+<CodeGroup>
+```python Python
 result = await research.invoke(ResearchInput(topic="AI agents"))
 ```
 
+```typescript TypeScript
+const result = await research.invoke({ topic: 'AI agents' });
+```
+</CodeGroup>
+
 **2. Event-triggered**
 
-```python
+<CodeGroup>
+```python Python
 @workflow(trigger_on_event="user/signup")
 async def onboard_user(ctx: WorkflowContext, event: UserSignUpEvent):
     # runs when event occurs
 ```
 
+```typescript TypeScript
+const onboardUser = defineWorkflow<UserSignUpEvent, void, void>(
+  { id: 'onboard-user', triggerOnEvent: 'user/signup' },
+  async (ctx, event) => {
+    // runs when event occurs
+  }
+);
+```
+</CodeGroup>
+
 **3. Scheduled**
 
-```python
+<CodeGroup>
+```python Python
 @workflow(schedule="0 9 * * *")  # Daily at 9am
 async def daily_report(ctx: WorkflowContext, input: SchedulePayload):
     # runs at the defined schedule
 ```
+
+```typescript TypeScript
+const dailyReport = defineWorkflow<SchedulePayload, void, void>(
+  { id: 'daily-report', schedule: '0 9 * * *' }, // Daily at 9am
+  async (ctx, input) => {
+    // runs at the defined schedule
+  }
+);
+```
+</CodeGroup>
 
 # Key takeaways
 

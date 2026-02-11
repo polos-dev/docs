@@ -5,6 +5,7 @@ icon: "robot"
 
 Agents use LLMs to reason about tasks and autonomously decide which actions to take. In Polos, agents are **durable** - they survive failures and resume exactly where they stopped.
 
+<CodeGroup>
 ```python
 import asyncio
 from polos import PolosClient, Agent, tool, WorkflowContext
@@ -35,6 +36,44 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript
+import { PolosClient, defineAgent, defineTool } from "@polos/sdk";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const weatherInputSchema = z.object({
+  city: z.string(),
+});
+
+const getWeather = defineTool(
+  {
+    id: "get-weather",
+    description: "Get weather for a city",
+    inputSchema: weatherInputSchema,
+  },
+  async (ctx, input) => {
+    return await weatherApi.get(input.city);
+  }
+);
+
+const weatherAgent = defineAgent({
+  id: "weather-agent",
+  model: openai("gpt-4o"),
+  systemPrompt: "You are a helpful weather assistant.",
+  tools: [getWeather],
+});
+
+async function main() {
+  const client = PolosClient.fromEnv();
+  // Run the agent
+  const response = await weatherAgent.run(client, "What's the weather in NYC?");
+  console.log(response.result);
+}
+
+main();
+```
+</CodeGroup>
+
 That's it. Your agent automatically:
 
 - Calls tools when needed
@@ -61,6 +100,7 @@ Under the hood, agents are built on Polos [workflows](/fundamentals/workflows) w
 
 Use `agent.run()` to generate complete response from LLM.
 
+<CodeGroup>
 ```python
 response = await weather_agent.run(
     client,
@@ -70,6 +110,17 @@ response = await weather_agent.run(
 
 print(response.result)
 ```
+
+```typescript
+const response = await weatherAgent.run(
+  client,
+  "Compare the weather in NYC and London",
+  { reasoning: { effort: "medium" } }
+);
+
+console.log(response.result);
+```
+</CodeGroup>
 
 The agent:
 
@@ -82,6 +133,7 @@ The agent:
 
 Stream responses for real-time user experience:
 
+<CodeGroup>
 ```python
 result = await weather_agent.stream(client, "What's the weather in Tokyo?")
 
@@ -90,10 +142,21 @@ async for chunk in result.text_chunks:
     print(chunk, end="", flush=True)
 ```
 
+```typescript
+const result = await weatherAgent.stream(client, "What's the weather in Tokyo?");
+
+// Stream text chunks as they arrive
+for await (const chunk of result.textChunks) {
+  process.stdout.write(chunk);
+}
+```
+</CodeGroup>
+
 ## Tools
 
 Tools give agents the ability to take actions. Define them with the `@tool` decorator:
 
+<CodeGroup>
 ```python
 from polos import tool, WorkflowContext
 from pydantic import BaseModel
@@ -136,6 +199,68 @@ research_agent = Agent(
 )
 ```
 
+```typescript
+import { defineAgent, defineTool } from "@polos/sdk";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+
+const searchInputSchema = z.object({
+  query: z.string(),
+});
+
+const searchOutputSchema = z.object({
+  results: z.array(z.string()),
+});
+
+const emailInputSchema = z.object({
+  to: z.string(),
+  subject: z.string(),
+  body: z.string(),
+});
+
+const emailOutputSchema = z.object({
+  status: z.string(),
+});
+
+const searchWeb = defineTool(
+  {
+    id: "search-web",
+    description: "Search the web",
+    inputSchema: searchInputSchema,
+    outputSchema: searchOutputSchema,
+  },
+  async (ctx, input) => {
+    const results = await searchApi.query(input.query);
+    return { results: results.slice(0, 5) };
+  }
+);
+
+const sendEmail = defineTool(
+  {
+    id: "send-email",
+    description: "Send an email",
+    inputSchema: emailInputSchema,
+    outputSchema: emailOutputSchema,
+  },
+  async (ctx, input) => {
+    await emailService.send({
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+    });
+    return { status: "sent" };
+  }
+);
+
+const researchAgent = defineAgent({
+  id: "research-agent",
+  model: anthropic("claude-sonnet-4"),
+  systemPrompt: "You are a research assistant. Search for information and email summaries.",
+  tools: [searchWeb, sendEmail],
+});
+```
+</CodeGroup>
+
 The LLM sees each tool's description and function signature, then decides when to call them based on the user's request.
 
 Tools are durable (under the hood, they are workflows) - if an agent crashes after calling a tool, the tool result is cached. On resume, the agent doesn't re-execute the tool; it uses the cached result.
@@ -144,6 +269,7 @@ Tools are durable (under the hood, they are workflows) - if an agent crashes aft
 
 Instead of natural language, agents can return structured data:
 
+<CodeGroup>
 ```python
 from pydantic import BaseModel, Field
 from polos import PolosClient, Agent
@@ -177,12 +303,49 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+```typescript
+import { PolosClient, defineAgent } from "@polos/sdk";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const personInfoSchema = z.object({
+  name: z.string().describe("Full name"),
+  age: z.number().int().min(0).max(130).describe("Age in years"),
+  email: z.string().describe("Email address"),
+  location: z.string().describe("City"),
+});
+
+const personExtractor = defineAgent({
+  id: "person-extractor",
+  model: openai("gpt-4o"),
+  systemPrompt: "Extract person information from text.",
+  outputSchema: personInfoSchema,
+});
+
+async function main() {
+  const client = PolosClient.fromEnv();
+  const response = await personExtractor.run(
+    client,
+    "Hi, I'm Alice, 28 years old, living in SF. Email: alice@example.com"
+  );
+
+  // response.result is typed from the Zod schema
+  console.log(response.result.name);     // "Alice"
+  console.log(response.result.age);      // 28
+  console.log(response.result.location); // "SF"
+}
+
+main();
+```
+</CodeGroup>
+
 Perfect for data extraction, form processing, or building structured APIs.
 
 ## Stop conditions
 
 Control when an agent stops executing to prevent runaway costs or infinite loops:
 
+<CodeGroup>
 ```python
 from polos import max_steps, max_tokens, MaxStepsConfig, MaxTokensConfig
 
@@ -199,6 +362,23 @@ research_agent = Agent(
 )
 ```
 
+```typescript
+import { defineAgent, maxSteps, maxTokens } from "@polos/sdk";
+import { openai } from "@ai-sdk/openai";
+
+const researchAgent = defineAgent({
+  id: "research-agent",
+  model: openai("gpt-4o"),
+  systemPrompt: "Research topics thoroughly.",
+  tools: [searchWeb, readArticle],
+  stopConditions: [
+    maxSteps({ count: 15 }),    // Stop after 15 LLM calls
+    maxTokens({ limit: 50000 }), // Stop if tokens exceed 50k
+  ],
+});
+```
+</CodeGroup>
+
 Here, we are using **built-in stop conditions:**
 
 - `max_steps` - Limit reasoning iterations
@@ -210,6 +390,7 @@ You can also create custom stop conditions for specific needs (e.g., stop when c
 
 Agents automatically maintain conversation history:
 
+<CodeGroup>
 ```python
 conversation_id = uuid.uuid4()
 
@@ -225,12 +406,35 @@ response2 = await chat_agent.run(
 # Agent knows we're still talking about NYC
 ```
 
+```typescript
+import { v4 as uuidv4 } from "uuid";
+
+const conversationId = uuidv4();
+
+// First message
+const response1 = await chatAgent.run(
+  client,
+  "What's the weather in NYC?",
+  { conversationId }
+);
+
+// Follow-up (agent remembers context)
+const response2 = await chatAgent.run(
+  client,
+  "How about tomorrow?",
+  { conversationId }
+);
+// Agent knows we're still talking about NYC
+```
+</CodeGroup>
+
 Conversation history is durable - if the agent crashes, it resumes with complete context.
 
 ## Using agents in workflows
 
 Agents are workflows, so you can compose them with other workflows:
 
+<CodeGroup>
 ```python
 from polos import workflow, WorkflowContext
 
@@ -241,20 +445,45 @@ async def customer_support(ctx: WorkflowContext, input: CustomerSupportInput):
         "customer_support_agent", # step key
         customer_support_agent.with_input(input.question)
     )
-    
+
     # Update your customer support software with the interaction
     await ctx.step.run("log", log_interaction, response)
-    
+
     # Send follow-up email
     await ctx.step.run("email", send_followup, input.customer_email, response)
-    
+
     return response
 ```
+
+```typescript
+import { defineWorkflow } from "@polos/sdk";
+
+const customerSupport = defineWorkflow<CustomerSupportInput, void, string>(
+  { id: "customer-support" },
+  async (ctx, input) => {
+    // Agent handles the customer query
+    const response = await ctx.step.agentInvokeAndWait(
+      "customer_support_agent", // step key
+      customerSupportAgent.withInput(input.question)
+    );
+
+    // Update your customer support software with the interaction
+    await ctx.step.run("log", logInteraction, response);
+
+    // Send follow-up email
+    await ctx.step.run("email", sendFollowup, input.customerEmail, response);
+
+    return response;
+  }
+);
+```
+</CodeGroup>
 
 ## Human-in-the-loop
 
 Combine agents with approval gates for sensitive operations:
 
+<CodeGroup>
 ```python
 @workflow
 async def approval_workflow(ctx: WorkflowContext, input: dict):
@@ -281,6 +510,41 @@ async def approval_workflow(ctx: WorkflowContext, input: dict):
     else:
         return None
 ```
+
+```typescript
+import { defineWorkflow } from "@polos/sdk";
+
+const approvalWorkflow = defineWorkflow<{ task: string }, void, string | null>(
+  { id: "approval-workflow" },
+  async (ctx, input) => {
+    // Agent generates a plan
+    const plan = await ctx.step.agentInvokeAndWait(
+      "generate_plan",
+      planningAgent.withInput(input.task)
+    );
+
+    // Suspend the workflow and wait for human approval
+    const resumeData = await ctx.step.suspend(
+      "suspend_step",
+      { data: { plan } }
+    );
+
+    // Resumes here when the decision is received
+    const decision = resumeData?.data ?? {};
+    if (decision.approved) {
+      // Execute the approved plan
+      const result = await ctx.step.agentInvokeAndWait(
+        "execute",
+        executorAgent.withInput(plan)
+      );
+      return result;
+    } else {
+      return null;
+    }
+  }
+);
+```
+</CodeGroup>
 
 ## Key takeaways
 

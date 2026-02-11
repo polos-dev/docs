@@ -13,7 +13,9 @@ Tools are defined using the `@tool` decorator. Each tool needs:
 - Pydantic models for input and output
 - An async function that performs the action
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import tool, WorkflowContext
 from pydantic import BaseModel, Field
 
@@ -34,7 +36,7 @@ async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutpu
         city=input.city,
         unit=input.unit
     )
-    
+
     return WeatherOutput(
         city=input.city,
         temperature=response.temp,
@@ -42,6 +44,48 @@ async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutpu
         humidity=response.humidity
     )
 ```
+
+```typescript TypeScript
+import { defineTool, type WorkflowContext } from '@polos/sdk';
+import { z } from 'zod';
+
+const weatherInputSchema = z.object({
+  city: z.string().describe('City name'),
+  unit: z.string().default('celsius').describe('Temperature unit'),
+});
+
+const weatherOutputSchema = z.object({
+  city: z.string(),
+  temperature: z.number(),
+  condition: z.string(),
+  humidity: z.number(),
+});
+
+export const getWeather = defineTool(
+  {
+    id: 'get_weather',
+    description: 'Get current weather for a city',
+    inputSchema: weatherInputSchema,
+    outputSchema: weatherOutputSchema,
+  },
+  async (_ctx: WorkflowContext, input) => {
+    // Call weather API
+    const response = await weatherApi.get({
+      city: input.city,
+      unit: input.unit,
+    });
+
+    return {
+      city: input.city,
+      temperature: response.temp,
+      condition: response.conditions,
+      humidity: response.humidity,
+    };
+  },
+);
+```
+
+</CodeGroup>
 
 ## Why Pydantic models?
 
@@ -61,7 +105,9 @@ async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutpu
 
 Add tools to an agent's `tools` parameter:
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, PolosClient
 
 weather_agent = Agent(
@@ -75,6 +121,23 @@ weather_agent = Agent(
 client = PolosClient()
 response = await weather_agent.run(client, "What's the weather in Tokyo?")
 ```
+
+```typescript TypeScript
+import { defineAgent } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+import { getWeather } from './tools.js';
+
+export const weatherAgent = defineAgent({
+  id: 'weather-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'You are a weather assistant. Use tools to answer weather questions.',
+  tools: [getWeather],
+});
+
+const response = await weatherAgent.run(client, "What's the weather in Tokyo?");
+```
+
+</CodeGroup>
 
 **What happens:**
 
@@ -92,30 +155,63 @@ Under the hood, tools are workflows. This means:
 - **Tool results are cached** - On agent replay, completed tools return cached results (no re-execution)
 - **Tools can use workflow features** - Call other workflows, wait for events, use steps
 
-```python
+<CodeGroup>
+
+```python Python
 @tool(description="Process order and send confirmation")
 async def process_order(ctx: WorkflowContext, input: OrderInput) -> OrderOutput:
     # Tool can use workflow steps
     order = await ctx.step.run("create_order", create_order, input)
-    
+
     # Tool can call other workflows
     payment = await ctx.step.invoke_and_wait(
         "process_payment",
         payment_workflow,
         {"order_id": order.id}
     )
-    
+
     # Tool can wait
     await ctx.step.wait_for("delay", seconds=5)
-    
+
     return OrderOutput(order_id=order.id, status="completed")
 ```
+
+```typescript TypeScript
+export const processOrder = defineTool(
+  {
+    id: 'process_order',
+    description: 'Process order and send confirmation',
+    inputSchema: orderInputSchema,
+    outputSchema: orderOutputSchema,
+  },
+  async (ctx, input) => {
+    // Tool can use workflow steps
+    const order = await ctx.step.run('create_order', () => createOrder(input));
+
+    // Tool can call other workflows
+    const payment = await ctx.step.invokeAndWait(
+      'process_payment',
+      paymentWorkflow,
+      { orderId: order.id },
+    );
+
+    // Tool can wait
+    await ctx.step.waitFor('delay', { seconds: 5 });
+
+    return { orderId: order.id, status: 'completed' };
+  },
+);
+```
+
+</CodeGroup>
 
 ## Error handling
 
 When tools encounter errors, the agent feeds the error back to the LLM so it can correct mistakes or try alternative approaches.
 
-```python
+<CodeGroup>
+
+```python Python
 class CalculatorInput(BaseModel):
     expression: str
 
@@ -128,6 +224,35 @@ async def calculator(ctx: WorkflowContext, input: CalculatorInput) -> Calculator
     result = eval(input.expression)
     return CalculatorOutput(result=result, error=None)
 ```
+
+```typescript TypeScript
+import { defineTool, type WorkflowContext } from '@polos/sdk';
+import { z } from 'zod';
+
+const calculatorInputSchema = z.object({
+  expression: z.string(),
+});
+
+const calculatorOutputSchema = z.object({
+  result: z.number(),
+  error: z.string().nullable().default(null),
+});
+
+export const calculator = defineTool(
+  {
+    id: 'calculator',
+    description: 'Evaluate mathematical expressions',
+    inputSchema: calculatorInputSchema,
+    outputSchema: calculatorOutputSchema,
+  },
+  async (_ctx: WorkflowContext, input) => {
+    const result = eval(input.expression);
+    return { result, error: null };
+  },
+);
+```
+
+</CodeGroup>
 
 **Example flow:**
 
@@ -151,7 +276,9 @@ The LLM automatically:
 
 Agents can use multiple tools in a single conversation:
 
-```python
+<CodeGroup>
+
+```python Python
 class SearchInput(BaseModel):
     query: str
 
@@ -195,6 +322,74 @@ response = await assistant.run(
 )
 ```
 
+```typescript TypeScript
+import { defineTool, defineAgent, type WorkflowContext } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+import { z } from 'zod';
+
+const searchInputSchema = z.object({
+  query: z.string(),
+});
+
+const searchOutputSchema = z.object({
+  results: z.array(z.string()),
+});
+
+const emailInputSchema = z.object({
+  to: z.string(),
+  subject: z.string(),
+  body: z.string(),
+});
+
+const emailOutputSchema = z.object({
+  status: z.string(),
+});
+
+export const searchWeb = defineTool(
+  {
+    id: 'search_web',
+    description: 'Search the web',
+    inputSchema: searchInputSchema,
+    outputSchema: searchOutputSchema,
+  },
+  async (_ctx: WorkflowContext, input) => {
+    const results = await searchApi.query(input.query);
+    return { results: results.slice(0, 5) };
+  },
+);
+
+export const sendEmail = defineTool(
+  {
+    id: 'send_email',
+    description: 'Send an email',
+    inputSchema: emailInputSchema,
+    outputSchema: emailOutputSchema,
+  },
+  async (_ctx: WorkflowContext, input) => {
+    await emailService.send({
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+    });
+    return { status: 'sent' };
+  },
+);
+
+export const assistant = defineAgent({
+  id: 'assistant',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt: 'You are a helpful assistant. Search for information and send emails when needed.',
+  tools: [searchWeb, sendEmail],
+});
+
+const response = await assistant.run(
+  client,
+  'Search for Python tutorials and email the top 3 results to alice@example.com',
+);
+```
+
+</CodeGroup>
+
 The agent will:
 
 1. Call `search_web("Python tutorials")`
@@ -206,7 +401,9 @@ The agent will:
 
 Write clear tool descriptions to help the LLM understand when to use each tool:
 
-```python
+<CodeGroup>
+
+```python Python
 # ❌ BAD: Vague description
 @tool(description="Does stuff with data")
 async def process_data(ctx, input):
@@ -223,6 +420,43 @@ async def send_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
     ...
 ```
 
+```typescript TypeScript
+// ❌ BAD: Vague description
+export const processData = defineTool(
+  {
+    id: 'process_data',
+    description: 'Does stuff with data',
+    inputSchema: processDataInputSchema,
+    outputSchema: processDataOutputSchema,
+  },
+  async (ctx, input) => { ... },
+);
+
+// ✅ GOOD: Clear, specific description
+export const analyzeCsv = defineTool(
+  {
+    id: 'analyze_csv',
+    description: 'Analyze CSV data and return summary statistics including mean, median, and standard deviation',
+    inputSchema: analyzeInputSchema,
+    outputSchema: analyzeOutputSchema,
+  },
+  async (ctx: WorkflowContext, input) => { ... },
+);
+
+// ✅ GOOD: Includes usage guidance
+export const sendEmail = defineTool(
+  {
+    id: 'send_email',
+    description: 'Send an email. Use this when the user explicitly asks to send an email or notify someone.',
+    inputSchema: emailInputSchema,
+    outputSchema: emailOutputSchema,
+  },
+  async (ctx: WorkflowContext, input) => { ... },
+);
+```
+
+</CodeGroup>
+
 **Best practices:**
 
 - Describe what the tool does
@@ -234,7 +468,9 @@ async def send_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
 
 Use Pydantic `Field` to document input parameters:
 
-```python
+<CodeGroup>
+
+```python Python
 from pydantic import BaseModel, Field
 
 class SearchInput(BaseModel):
@@ -253,26 +489,81 @@ async def search(ctx: WorkflowContext, input: SearchInput) -> SearchOutput:
     ...
 ```
 
+```typescript TypeScript
+import { z } from 'zod';
+
+const searchInputSchema = z.object({
+  query: z.string().describe('The search query string'),
+  maxResults: z
+    .number()
+    .default(10)
+    .describe('Maximum number of results to return (1-100)'),
+  filterByDate: z
+    .boolean()
+    .default(false)
+    .describe('If true, only return results from the last 30 days'),
+});
+
+export const search = defineTool(
+  {
+    id: 'search',
+    description: 'Search the web for information',
+    inputSchema: searchInputSchema,
+    outputSchema: searchOutputSchema,
+  },
+  async (ctx: WorkflowContext, input) => { ... },
+);
+```
+
+</CodeGroup>
+
 The LLM sees these descriptions and uses them to construct correct tool calls.
 
 ## Tool durability in practice
 
 Because tools are workflows, they benefit from durability:
 
-```python
+<CodeGroup>
+
+```python Python
 @tool(description="Process large dataset")
 async def process_dataset(ctx: WorkflowContext, input: DatasetInput) -> DatasetOutput:
     # Step 1: Download data (durable)
     data = await ctx.step.run("download", download_data, input.url)
-    
+
     # Step 2: Transform data (durable)
     transformed = await ctx.step.run("transform", transform_data, data)
-    
+
     # Step 3: Upload results (durable)
     url = await ctx.step.run("upload", upload_results, transformed)
-    
+
     return DatasetOutput(result_url=url)
 ```
+
+```typescript TypeScript
+export const processDataset = defineTool(
+  {
+    id: 'process_dataset',
+    description: 'Process large dataset',
+    inputSchema: datasetInputSchema,
+    outputSchema: datasetOutputSchema,
+  },
+  async (ctx, input) => {
+    // Step 1: Download data (durable)
+    const data = await ctx.step.run('download', () => downloadData(input.url));
+
+    // Step 2: Transform data (durable)
+    const transformed = await ctx.step.run('transform', () => transformData(data));
+
+    // Step 3: Upload results (durable)
+    const url = await ctx.step.run('upload', () => uploadResults(transformed));
+
+    return { resultUrl: url };
+  },
+);
+```
+
+</CodeGroup>
 
 If this tool crashes after downloading but before transforming:
 

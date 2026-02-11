@@ -11,7 +11,9 @@ When you write a workflow in Polos, the framework automatically persists your ex
 
 ### 1. Workflow starts
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow
 async def process_order(ctx: WorkflowContext, input: OrderInput):
     order = await ctx.step.run("fetch_order", fetch_order, input.order_id)
@@ -19,6 +21,20 @@ async def process_order(ctx: WorkflowContext, input: OrderInput):
     await ctx.step.run("send_confirmation", send_confirmation, order)
     return {"status": "completed"}
 ```
+
+```typescript TypeScript
+const processOrder = defineWorkflow<OrderInput, void, { status: string }>(
+  { id: 'process_order' },
+  async (ctx, input) => {
+    const order = await ctx.step.run('fetch_order', () => fetchOrder(input.orderId));
+    await ctx.step.run('charge_payment', () => chargePayment(order));
+    await ctx.step.run('send_confirmation', () => sendConfirmation(order));
+    return { status: 'completed' };
+  },
+);
+```
+
+</CodeGroup>
 
 When you invoke `process_order`, before your code runs:
 
@@ -57,20 +73,42 @@ When the orchestrator detects the failure, it automatically retries the workflow
    - If yes → returns the cached output (no re-execution)
    - If no → executes the step and persists the output
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow
 async def process_order(ctx: WorkflowContext, input: OrderInput):
     # ✅ Step 1: Already executed, returns cached result
     order = await ctx.step.run("fetch_order", fetch_order, input.order_id)
-    
+
     # ✅ Step 2: Already executed, returns cached result
     await ctx.step.run("charge_payment", charge_payment, order)
-    
+
     # ▶️ Step 3: Executes for the first time
     await ctx.step.run("send_confirmation", send_confirmation, order)
-    
+
     return {"status": "completed"}
 ```
+
+```typescript TypeScript
+const processOrder = defineWorkflow<OrderInput, void, { status: string }>(
+  { id: 'process_order' },
+  async (ctx, input) => {
+    // ✅ Step 1: Already executed, returns cached result
+    const order = await ctx.step.run('fetch_order', () => fetchOrder(input.orderId));
+
+    // ✅ Step 2: Already executed, returns cached result
+    await ctx.step.run('charge_payment', () => chargePayment(order));
+
+    // ▶️ Step 3: Executes for the first time
+    await ctx.step.run('send_confirmation', () => sendConfirmation(order));
+
+    return { status: 'completed' };
+  },
+);
+```
+
+</CodeGroup>
 
 The workflow resumes from step 3 - no wasted API calls, no duplicate charges, no lost progress.
 
@@ -82,7 +120,9 @@ This is why non-deterministic operations must be in steps - otherwise, replaying
 
 ### The problem with non-deterministic code
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow
 async def bad_example(ctx: WorkflowContext, input: Input):
     # ❌ BAD: Random number determines execution path
@@ -90,9 +130,27 @@ async def bad_example(ctx: WorkflowContext, input: Input):
         result = await ctx.step.run("expensive_analysis", run_analysis, input.data)
     else:
         result = await ctx.step.run("quick_check", run_check, input.data)
-    
+
     await ctx.step.run("send_result", send_email, result)
 ```
+
+```typescript TypeScript
+const badExample = defineWorkflow<Input, void, void>(
+  { id: 'bad_example' },
+  async (ctx, input) => {
+    // ❌ BAD: Random number determines execution path
+    if (Math.random() > 0.5) {
+      const result = await ctx.step.run('expensive_analysis', () => runAnalysis(input.data));
+    } else {
+      const result = await ctx.step.run('quick_check', () => runCheck(input.data));
+    }
+
+    await ctx.step.run('send_result', () => sendEmail(result));
+  },
+);
+```
+
+</CodeGroup>
 
 **What goes wrong:**
 
@@ -109,19 +167,42 @@ async def bad_example(ctx: WorkflowContext, input: Input):
 
 ### The solution: Put non-deterministic operations in steps
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow
 async def good_example(ctx: WorkflowContext, input: Input):
     # ✅ GOOD: Random number generated in a step
     should_analyze = await ctx.step.run("decide", lambda: random.random() > 0.5)
-    
+
     if should_analyze:
         result = await ctx.step.run("expensive_analysis", run_analysis, input.data)
     else:
         result = await ctx.step.run("quick_check", run_check, input.data)
-    
+
     await ctx.step.run("send_result", send_email, result)
 ```
+
+```typescript TypeScript
+const goodExample = defineWorkflow<Input, void, void>(
+  { id: 'good_example' },
+  async (ctx, input) => {
+    // ✅ GOOD: Random number generated in a step
+    const shouldAnalyze = await ctx.step.run('decide', () => Math.random() > 0.5);
+
+    let result;
+    if (shouldAnalyze) {
+      result = await ctx.step.run('expensive_analysis', () => runAnalysis(input.data));
+    } else {
+      result = await ctx.step.run('quick_check', () => runCheck(input.data));
+    }
+
+    await ctx.step.run('send_result', () => sendEmail(result));
+  },
+);
+```
+
+</CodeGroup>
 
 **What happens on replay:**
 
@@ -138,16 +219,34 @@ async def good_example(ctx: WorkflowContext, input: Input):
 
 Polos provides helpers for common non-deterministic operations:
 
-```python
+<CodeGroup>
+
+```python Python
 @workflow
 async def order_workflow(ctx: WorkflowContext, input: Input):
     # Built-in helpers (automatically durable)
     timestamp = await ctx.step.now("get_time")
     order_id = await ctx.step.uuid("gen_id")
     random_val = await ctx.step.random("get_random")
-    
+
     await ctx.step.run("create_order", create_order, order_id, timestamp)
 ```
+
+```typescript TypeScript
+const orderWorkflow = defineWorkflow<Input, void, void>(
+  { id: 'order_workflow' },
+  async (ctx, input) => {
+    // Built-in helpers (automatically durable)
+    const timestamp = await ctx.step.now('get_time');
+    const orderId = await ctx.step.uuid('gen_id');
+    const randomVal = await ctx.step.random('get_random');
+
+    await ctx.step.run('create_order', () => createOrder(orderId, timestamp));
+  },
+);
+```
+
+</CodeGroup>
 
 These are equivalent to wrapping `time.time()`, `uuid.uuid4()`, and `random.random()` in steps, but more convenient.
 
@@ -155,7 +254,7 @@ These are equivalent to wrapping `time.time()`, `uuid.uuid4()`, and `random.rand
 
 Step outputs must be **JSON serializable** so they can be persisted to the database.
 
-We recommend using Pydantic models for step outputs.
+We recommend using Pydantic models (Python) or Zod schemas (TypeScript) for step outputs.
 
 ## Key takeaways
 
@@ -164,7 +263,7 @@ We recommend using Pydantic models for step outputs.
 - **Workflows must be deterministic to replay correctly** - Same inputs must produce same execution path
 - **Non-deterministic operations must be in steps** - Time, UUIDs, random, API calls
 - **Use `ctx.step.now()`, `ctx.step.uuid()`, `ctx.step.random()` for common cases** - These helpers are cached on replay
-- **Step outputs must be JSON serializable** - Use Pydantic models for complex types
+- **Step outputs must be JSON serializable** - Use Pydantic models (Python) or Zod schemas (TypeScript) for complex types
 
 ## Learn more
 

@@ -18,6 +18,7 @@ Child workflows and agents also have their own `on_start` and `on_end` hooks.
 
 Create hooks using the `@hook` decorator:
 
+<CodeGroup>
 ```python
 from polos import hook, WorkflowContext, HookContext, HookResult
 
@@ -26,9 +27,21 @@ def log_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
     """Log execution details."""
     print(f"Workflow: {hook_context.workflow_id}")
     print(f"Payload: {hook_context.current_payload}")
-    
+
     return HookResult.continue_with()
 ```
+
+```typescript
+import { defineHook, HookResult } from '@polos/sdk';
+
+const logHook = defineHook(async (ctx, hookCtx) => {
+  console.log(`Workflow: ${hookCtx.workflowId}`);
+  console.log(`Payload: ${hookCtx.currentPayload}`);
+
+  return HookResult.continue();
+}, { name: 'log-hook' });
+```
+</CodeGroup>
 
 **Hook signature:**
 
@@ -42,6 +55,7 @@ Hooks return `HookResult` with three options:
 
 ### 1. Continue without changes
 
+<CodeGroup>
 ```python
 @hook
 def simple_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
@@ -50,8 +64,18 @@ def simple_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
     return HookResult.continue_with()
 ```
 
+```typescript
+const simpleHook = defineHook(async (ctx, hookCtx) => {
+  // Just observe, don't modify
+  console.log('Hook executed');
+  return HookResult.continue();
+}, { name: 'simple-hook' });
+```
+</CodeGroup>
+
 ### 2. Continue with modifications
 
+<CodeGroup>
 ```python
 import re
 
@@ -60,9 +84,9 @@ def redact_pii_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResu
     """Redact sensitive information from payloads."""
     if not hook_context.current_payload:
         return HookResult.continue_with()
-    
+
     modified = hook_context.current_payload.copy()
-    
+
     # Redact emails
     if isinstance(modified, dict):
         for key, value in modified.items():
@@ -72,26 +96,64 @@ def redact_pii_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResu
                     '[EMAIL_REDACTED]',
                     value
                 )
-    
+
     return HookResult.continue_with(modified_payload=modified)
 ```
 
+```typescript
+const redactPiiHook = defineHook(async (ctx, hookCtx) => {
+  if (!hookCtx.currentPayload) {
+    return HookResult.continue();
+  }
+
+  const modified = { ...hookCtx.currentPayload };
+
+  // Redact emails
+  for (const key of Object.keys(modified)) {
+    if (typeof modified[key] === 'string') {
+      modified[key] = modified[key].replace(
+        /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+        '[EMAIL_REDACTED]'
+      );
+    }
+  }
+
+  return HookResult.continueWith({ modifiedPayload: modified });
+}, { name: 'redact-pii-hook' });
+```
+</CodeGroup>
+
 ### 3. Fail and stop execution
 
+<CodeGroup>
 ```python
 @hook
 def validation_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
     """Validate payload before execution."""
     payload = hook_context.current_payload
-    
+
     if not payload or not payload.get("required_field"):
         return HookResult.fail("Missing required field")
-    
+
     return HookResult.continue_with()
 ```
 
+```typescript
+const validationHook = defineHook(async (ctx, hookCtx) => {
+  const payload = hookCtx.currentPayload;
+
+  if (!payload || !payload.requiredField) {
+    return HookResult.fail('Missing required field');
+  }
+
+  return HookResult.continue();
+}, { name: 'validation-hook' });
+```
+</CodeGroup>
+
 ## Attaching hooks to workflows
 
+<CodeGroup>
 ```python
 from polos import workflow, WorkflowContext
 
@@ -106,34 +168,74 @@ async def data_processor(ctx: WorkflowContext, input: dict):
     return result
 ```
 
+```typescript
+import { defineWorkflow } from '@polos/sdk';
+
+const dataProcessor = defineWorkflow<Record<string, any>, void, any>(
+  {
+    id: 'data-processor',
+    onStart: [logHook, validateInputHook],
+    onEnd: [logHook, saveResultsHook],
+  },
+  async (ctx, input) => {
+    const result = await ctx.step.run('process', () => processData(input));
+    return result;
+  }
+);
+```
+</CodeGroup>
+
 ## Hook context
 
 Hooks receive `HookContext` with execution state:
 
+<CodeGroup>
 ```python
 @hook
 def inspect_context_hook(ctx: WorkflowContext, hook_context: HookContext) -> HookResult:
     # Workflow information
     workflow_id = hook_context.workflow_id
-    
+
     # User context
     user_id = hook_context.user_id
     session_id = hook_context.session_id
-    
+
     # Execution state
     current_payload = hook_context.current_payload
     current_output = hook_context.current_output
-    
+
     # Step history (list of completed steps) - only available for agents
     steps = hook_context.steps
-    
+
     return HookResult.continue_with()
 ```
+
+```typescript
+const inspectContextHook = defineHook(async (ctx, hookCtx) => {
+  // Workflow information
+  const workflowId = hookCtx.workflowId;
+
+  // User context
+  const userId = hookCtx.userId;
+  const sessionId = hookCtx.sessionId;
+
+  // Execution state
+  const currentPayload = hookCtx.currentPayload;
+  const currentOutput = hookCtx.currentOutput;
+
+  // Step history (list of completed steps) - only available for agents
+  const steps = hookCtx.steps;
+
+  return HookResult.continue();
+}, { name: 'inspect-context-hook' });
+```
+</CodeGroup>
 
 ## Multiple hooks
 
 Hooks run in order. If any hook fails, execution stops:
 
+<CodeGroup>
 ```python
 @workflow(
     id="multi-hook-workflow",
@@ -146,5 +248,22 @@ Hooks run in order. If any hook fails, execution stops:
 async def multi_hook_workflow(ctx: WorkflowContext, input: dict):
     return await ctx.step.run("process", process_data, input)
 ```
+
+```typescript
+const multiHookWorkflow = defineWorkflow<Record<string, any>, void, any>(
+  {
+    id: 'multi-hook-workflow',
+    onStart: [
+      validateInputHook,   // Runs first
+      redactPiiHook,       // Runs second (on validated input)
+      addMetadataHook,     // Runs third (on redacted input)
+    ],
+  },
+  async (ctx, input) => {
+    return await ctx.step.run('process', () => processData(input));
+  }
+);
+```
+</CodeGroup>
 
 If `validate_input_hook` fails, `redact_pii_hook` and `add_metadata_hook` never run.

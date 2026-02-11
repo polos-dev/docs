@@ -18,7 +18,9 @@ Guardrails run synchronously after each LLM call, giving you fine-grained contro
 
 The simplest guardrails are natural language rules. Polos uses an LLM (the same model used by the agent) to evaluate these rules and returns pass/fail:
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent, PolosClient
 
 safety_agent = Agent(
@@ -30,7 +32,7 @@ safety_agent = Agent(
     guardrails=[
         "Ensure the response does not contain any profanity or offensive language. "
         "The response should be professional and appropriate for all audiences.",
-        
+
         "Do not reveal internal company information, API keys, or confidential data. "
         "Only share information from the official knowledge base."
     ]
@@ -39,6 +41,59 @@ safety_agent = Agent(
 client = PolosClient()
 response = await safety_agent.run(client, "How do I reset my password?")
 ```
+
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+// In TypeScript, guardrails are always functions
+const noProfanity = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const profanityPatterns = ['profanity', 'offensive']; // Replace with actual checks
+    for (const pattern of profanityPatterns) {
+      if (content.includes(pattern)) {
+        return GuardrailResult.fail(
+          'Response contains profanity or offensive language. '
+          + 'The response should be professional and appropriate for all audiences.'
+        );
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'no_profanity' },
+);
+
+const noConfidentialData = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const forbidden = ['api key', 'internal', 'confidential'];
+    for (const term of forbidden) {
+      if (content.includes(term)) {
+        return GuardrailResult.fail(
+          'Do not reveal internal company information, API keys, or confidential data.'
+        );
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'no_confidential_data' },
+);
+
+const safetyAgent = defineAgent({
+  id: 'safety-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'You are a helpful customer service assistant.',
+  tools: [searchKnowledgeBase, sendEmail],
+  guardrails: [noProfanity, noConfidentialData],
+});
+
+const client = PolosClient.fromEnv();
+const response = await safetyAgent.run(client, 'How do I reset my password?');
+```
+
+</CodeGroup>
 
 **How it works:**
 
@@ -60,7 +115,9 @@ String guardrails return:
 
 For complex logic or content modification, use function guardrails:
 
-```python
+<CodeGroup>
+
+```python Python
 import re
 from polos import (
     PolosClient, Agent, guardrail, GuardrailContext, GuardrailResult, WorkflowContext
@@ -72,25 +129,25 @@ def redact_sensitive_data(ctx: WorkflowContext, guardrail_context: GuardrailCont
     content = guardrail_context.content
     if content is None:
         return GuardrailResult.continue_with()
-    
+
     content_str = str(content)
     modified = content_str
-    
+
     # Redact email addresses
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     modified = re.sub(email_pattern, '[EMAIL_REDACTED]', modified)
-    
+
     # Redact credit card numbers
     cc_pattern = r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
     modified = re.sub(cc_pattern, '[CARD_REDACTED]', modified)
-    
+
     # SSN pattern
     ssn_pattern = r'\b\d{3}-\d{2}-\d{4}\b'
     modified = re.sub(ssn_pattern, '[SSN_REDACTED]', modified)
-    
+
     if modified != content_str:
         return GuardrailResult.continue_with(modified_content=modified)
-    
+
     return GuardrailResult.continue_with()
 
 privacy_agent = Agent(
@@ -110,72 +167,212 @@ response = await privacy_agent.run(
 # Response will have email redacted: "Your email is [EMAIL_REDACTED]"
 ```
 
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+const redactSensitiveData = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = guardrailCtx.content;
+    if (content == null) {
+      return GuardrailResult.continue();
+    }
+
+    let modified = String(content);
+
+    // Redact email addresses
+    modified = modified.replace(
+      /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+      '[EMAIL_REDACTED]'
+    );
+
+    // Redact credit card numbers
+    modified = modified.replace(
+      /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
+      '[CARD_REDACTED]'
+    );
+
+    // SSN pattern
+    modified = modified.replace(
+      /\b\d{3}-\d{2}-\d{4}\b/g,
+      '[SSN_REDACTED]'
+    );
+
+    if (modified !== String(content)) {
+      return GuardrailResult.continueWith({ modifiedContent: modified });
+    }
+
+    return GuardrailResult.continue();
+  },
+  { name: 'redact_sensitive_data' },
+);
+
+const privacyAgent = defineAgent({
+  id: 'privacy-agent',
+  model: anthropic('claude-sonnet-4'),
+  systemPrompt: 'You are a customer support agent. Help users with their accounts.',
+  tools: [getUserInfo, updateAccount],
+  guardrails: [redactSensitiveData],
+});
+
+const response = await privacyAgent.run(
+  client,
+  "What's my account information? My email is alice@example.com"
+);
+
+// Response will have email redacted: "Your email is [EMAIL_REDACTED]"
+```
+
+</CodeGroup>
+
 ## Guardrail results
 
 Function guardrails return `GuardrailResult` with three options:
 
 ### 1. Continue without changes
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def simple_check(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
     # Everything looks good, continue as-is
     return GuardrailResult.continue_with()
 ```
 
+```typescript TypeScript
+import { defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+
+const simpleCheck = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    // Everything looks good, continue as-is
+    return GuardrailResult.continue();
+  },
+  { name: 'simple_check' },
+);
+```
+
+</CodeGroup>
+
 ### 2. Continue with modifications
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def content_filter(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
     content = guardrail_context.content or ""
-    
+
     # Modify content
     filtered = content.replace("bad_word", "***")
-    
+
     return GuardrailResult.continue_with(modified_content=filtered)
 ```
 
+```typescript TypeScript
+const contentFilter = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = guardrailCtx.content ?? '';
+
+    // Modify content
+    const filtered = content.replace(/bad_word/g, '***');
+
+    return GuardrailResult.continueWith({ modifiedContent: filtered });
+  },
+  { name: 'content_filter' },
+);
+```
+
+</CodeGroup>
+
 ### 3. Fail and stop execution
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def compliance_check(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
     content = str(guardrail_context.content or "").lower()
-    
+
     if "confidential" in content:
         return GuardrailResult.fail(
             error_message="Response contains confidential information and was blocked"
         )
-    
+
     return GuardrailResult.continue_with()
 ```
+
+```typescript TypeScript
+const complianceCheck = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+
+    if (content.includes('confidential')) {
+      return GuardrailResult.fail(
+        'Response contains confidential information and was blocked'
+      );
+    }
+
+    return GuardrailResult.continue();
+  },
+  { name: 'compliance_check' },
+);
+```
+
+</CodeGroup>
 
 ## Guardrail context
 
 Guardrails receive a `GuardrailContext` with the current agent state:
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def inspector(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
     # Access the generated content
     content = guardrail_context.content
-    
+
     # Access tool calls (if any)
     tool_calls = guardrail_context.tool_calls or []
-    
+
     # Access the full message history
     messages = guardrail_context.messages
-    
+
     # Your validation logic here
     return GuardrailResult.continue_with()
 ```
+
+```typescript TypeScript
+const inspector = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    // Access the generated content
+    const content = guardrailCtx.content;
+
+    // Access tool calls (if any)
+    const toolCalls = guardrailCtx.toolCalls ?? [];
+
+    // Access the full message history
+    const messages = guardrailCtx.messages;
+
+    // Your validation logic here
+    return GuardrailResult.continue();
+  },
+  { name: 'inspector' },
+);
+```
+
+</CodeGroup>
 
 ## Guardrail retries
 
 Configure guardrail retry behavior on the agent:
 
-```python
+<CodeGroup>
+
+```python Python
 from polos import Agent
 
 safety_agent = Agent(
@@ -190,6 +387,39 @@ safety_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+// In TypeScript, guardrails are always functions
+const ensureProfessional = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const unprofessionalTerms = ['slang', 'inappropriate']; // Replace with actual checks
+    for (const term of unprofessionalTerms) {
+      if (content.includes(term)) {
+        return GuardrailResult.fail(
+          'Ensure responses are professional and appropriate.'
+        );
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'ensure_professional' },
+);
+
+const safetyAgent = defineAgent({
+  id: 'safety-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'You are a helpful assistant.',
+  guardrails: [ensureProfessional],
+  guardrailMaxRetries: 3, // Retry up to 3 times (default: 2)
+});
+```
+
+</CodeGroup>
+
 **When a guardrail fails:**
 
 - Polos feeds the guardrail error message to the LLM
@@ -201,18 +431,20 @@ safety_agent = Agent(
 
 Guardrails can also filter or modify tool calls:
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def tool_call_filter(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
     """Only allow specific tools to be called."""
     tool_calls = guardrail_context.tool_calls or []
-    
+
     if not tool_calls:
         return GuardrailResult.continue_with()
-    
+
     # Define allowed tools
     allowed_tools = {"search_knowledge_base", "get_weather"}
-    
+
     # Filter tool calls
     filtered_calls = []
     for tool_call in tool_calls:
@@ -224,7 +456,7 @@ def tool_call_filter(ctx: WorkflowContext, guardrail_context: GuardrailContext) 
                     filtered_calls.append(tool_call)
                 else:
                     print(f"Blocked unauthorized tool: {tool_name}")
-    
+
     # Return filtered list
     return GuardrailResult.continue_with(modified_tool_calls=filtered_calls)
 
@@ -238,20 +470,67 @@ restricted_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const toolCallFilter = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    /** Only allow specific tools to be called. */
+    const toolCalls = guardrailCtx.toolCalls ?? [];
+
+    if (toolCalls.length === 0) {
+      return GuardrailResult.continue();
+    }
+
+    // Define allowed tools
+    const allowedTools = new Set(['search_knowledge_base', 'get_weather']);
+
+    // Filter tool calls
+    const filteredCalls = toolCalls.filter((toolCall: any) => {
+      const functionInfo = toolCall?.function ?? {};
+      const toolName = functionInfo?.name;
+      if (allowedTools.has(toolName)) {
+        return true;
+      }
+      console.log(`Blocked unauthorized tool: ${toolName}`);
+      return false;
+    });
+
+    // Return filtered list
+    return GuardrailResult.continueWith({ modifiedToolCalls: filteredCalls });
+  },
+  { name: 'tool_call_filter' },
+);
+
+const restrictedAgent = defineAgent({
+  id: 'restricted-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'You are a helpful assistant.',
+  tools: [searchKnowledgeBase, getWeather, sendEmail, deleteData],
+  guardrails: [toolCallFilter], // Will block sendEmail and deleteData
+});
+```
+
+</CodeGroup>
+
 ## Multiple guardrails
 
 Guardrails execute in order. If any guardrail fails, execution stops:
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def content_length_limit(ctx: WorkflowContext, guardrail_context: GuardrailContext) -> GuardrailResult:
     """Limit response length to 500 characters."""
     content = str(guardrail_context.content or "")
-    
+
     if len(content) > 500:
         truncated = content[:500] + "... [truncated]"
         return GuardrailResult.continue_with(modified_content=truncated)
-    
+
     return GuardrailResult.continue_with()
 
 @guardrail
@@ -259,11 +538,11 @@ def no_external_links(ctx: WorkflowContext, guardrail_context: GuardrailContext)
     """Block responses containing external URLs."""
     import re
     content = str(guardrail_context.content or "")
-    
+
     url_pattern = r'https?://[^\s]+'
     if re.search(url_pattern, content):
         return GuardrailResult.fail("Response contains external links, which are not allowed")
-    
+
     return GuardrailResult.continue_with()
 
 safe_agent = Agent(
@@ -279,6 +558,54 @@ safe_agent = Agent(
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { openai } from '@ai-sdk/openai';
+
+const contentLengthLimit = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    /** Limit response length to 500 characters. */
+    const content = guardrailCtx.content ?? '';
+
+    if (content.length > 500) {
+      const truncated = content.slice(0, 500) + '... [truncated]';
+      return GuardrailResult.continueWith({ modifiedContent: truncated });
+    }
+
+    return GuardrailResult.continue();
+  },
+  { name: 'content_length_limit' },
+);
+
+const noExternalLinks = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    /** Block responses containing external URLs. */
+    const content = guardrailCtx.content ?? '';
+
+    if (/https?:\/\/[^\s]+/.test(content)) {
+      return GuardrailResult.fail('Response contains external links, which are not allowed');
+    }
+
+    return GuardrailResult.continue();
+  },
+  { name: 'no_external_links' },
+);
+
+const safeAgent = defineAgent({
+  id: 'safe-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'You are a helpful assistant.',
+  guardrails: [
+    contentLengthLimit,    // Runs first
+    noExternalLinks,       // Runs second (on potentially modified content)
+    redactSensitiveData,   // Runs third
+  ],
+});
+```
+
+</CodeGroup>
+
 **Execution order:**
 
 1. `content_length_limit` - Truncates if needed
@@ -291,7 +618,9 @@ If `no_external_links` fails, `redact_sensitive_data` never runs.
 
 You can combine both types:
 
-```python
+<CodeGroup>
+
+```python Python
 compliance_agent = Agent(
     id="compliance-agent",
     provider="anthropic",
@@ -300,21 +629,77 @@ compliance_agent = Agent(
     tools=[get_account_info, transfer_funds],
     guardrails=[
         redact_sensitive_data,  # Function guardrail
-        
+
         "Ensure the response complies with financial regulations. "
         "Do not provide specific investment advice or guarantees.",  # String guardrail
-        
+
         "Verify that any financial information shared is accurate and "
         "does not contain speculative predictions."  # String guardrail
     ]
 )
 ```
 
+```typescript TypeScript
+import { defineAgent, defineGuardrail, MiddlewareGuardrailResult as GuardrailResult } from '@polos/sdk';
+import type { GuardrailResultType } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+// In TypeScript, all guardrails are functions
+const financialRegulationCheck = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const forbiddenPhrases = ['guaranteed return', 'you should invest in', 'risk-free'];
+    for (const phrase of forbiddenPhrases) {
+      if (content.includes(phrase)) {
+        return GuardrailResult.fail(
+          'Response must comply with financial regulations. '
+          + 'Do not provide specific investment advice or guarantees.'
+        );
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'financial_regulation_check' },
+);
+
+const noSpeculativePredictions = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const speculativeTerms = ['will definitely', 'guaranteed to', 'predict that'];
+    for (const term of speculativeTerms) {
+      if (content.includes(term)) {
+        return GuardrailResult.fail(
+          'Financial information must be accurate and not contain speculative predictions.'
+        );
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'no_speculative_predictions' },
+);
+
+const complianceAgent = defineAgent({
+  id: 'compliance-agent',
+  model: anthropic('claude-sonnet-4'),
+  systemPrompt: 'You are a financial advisor assistant.',
+  tools: [getAccountInfo, transferFunds],
+  guardrails: [
+    redactSensitiveData,         // Function guardrail
+    financialRegulationCheck,    // Function guardrail
+    noSpeculativePredictions,    // Function guardrail
+  ],
+});
+```
+
+</CodeGroup>
+
 ## Use cases
 
 ### Content safety
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def profanity_filter(ctx, guardrail_context):
     content = str(guardrail_context.content or "")
@@ -323,9 +708,26 @@ def profanity_filter(ctx, guardrail_context):
     return GuardrailResult.continue_with()
 ```
 
+```typescript TypeScript
+const profanityFilter = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = guardrailCtx.content ?? '';
+    if (containsProfanity(content)) {
+      return GuardrailResult.fail('Response contains inappropriate language');
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'profanity_filter' },
+);
+```
+
+</CodeGroup>
+
 ### Data privacy
 
-```python
+<CodeGroup>
+
+```python Python
 @guardrail
 def gdpr_compliance(ctx, guardrail_context):
     content = str(guardrail_context.content or "")
@@ -334,9 +736,25 @@ def gdpr_compliance(ctx, guardrail_context):
     return GuardrailResult.continue_with(modified_content=sanitized)
 ```
 
+```typescript TypeScript
+const gdprCompliance = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = guardrailCtx.content ?? '';
+    // Redact PII: emails, phone numbers, addresses
+    const sanitized = redactPii(content);
+    return GuardrailResult.continueWith({ modifiedContent: sanitized });
+  },
+  { name: 'gdpr_compliance' },
+);
+```
+
+</CodeGroup>
+
 ### Quality assurance
 
-```python
+<CodeGroup>
+
+```python Python
 # String guardrail for quality
 agent = Agent(
     id="qa-agent",
@@ -346,6 +764,34 @@ agent = Agent(
     ]
 )
 ```
+
+```typescript TypeScript
+// In TypeScript, guardrails are always functions
+const factualAccuracy = defineGuardrail(
+  async (_ctx, guardrailCtx): Promise<GuardrailResultType> => {
+    const content = (guardrailCtx.content ?? '').toLowerCase();
+    const speculativeIndicators = ['i think', 'probably', 'might be', 'not sure'];
+    for (const indicator of speculativeIndicators) {
+      if (content.includes(indicator)) {
+        return GuardrailResult.fail(
+          'Response must be factually accurate and not contain unverified claims or speculation.'
+        );
+      }
+    }
+    return GuardrailResult.continue();
+  },
+  { name: 'factual_accuracy' },
+);
+
+const agent = defineAgent({
+  id: 'qa-agent',
+  model: openai('gpt-4o'),
+  systemPrompt: 'You are a helpful assistant.',
+  guardrails: [factualAccuracy],
+});
+```
+
+</CodeGroup>
 
 ## Key takeaways
 

@@ -13,7 +13,8 @@ There are two ways to schedule workflows:
 
 Use a cron expression directly in the decorator:
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow(
@@ -22,18 +23,41 @@ from polos import workflow, WorkflowContext
 )
 async def daily_report(ctx: WorkflowContext, payload: SchedulePayload):
     print(f"Report generated at: {payload.timestamp}")
-    
+
     # Generate and send report
     data = await ctx.step.run("fetch_data", fetch_daily_data)
     report = await ctx.step.run("generate", create_report, data)
     await ctx.step.run("send", email_report, report)
-    
+
     return {"status": "completed"}
 ```
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+import type { SchedulePayload } from '@polos/sdk';
+
+const dailyReport = defineWorkflow<SchedulePayload, {}, { status: string }>(
+  {
+    id: 'daily-report',
+    schedule: '0 9 * * *', // Every day at 9:00 AM UTC
+  },
+  async (ctx, payload) => {
+    console.log(`Report generated at: ${payload.timestamp}`);
+
+    // Generate and send report
+    const data = await ctx.step.run('fetch_data', () => fetchDailyData());
+    const report = await ctx.step.run('generate', () => createReport(data));
+    await ctx.step.run('send', () => emailReport(report));
+
+    return { status: 'completed' };
+  }
+);
+```
+</CodeGroup>
 
 You can also specify timezone in the cron schedule:
 
-```python
+<CodeGroup>
+```python Python
 @workflow(
     id="end-of-day-sync",
     schedule={
@@ -43,10 +67,25 @@ You can also specify timezone in the cron schedule:
 )
 async def end_of_day_sync(ctx: WorkflowContext, payload: SchedulePayload):
     print(f"Syncing at {payload.timestamp} Eastern Time")
-    
+
     await ctx.step.run("sync_data", sync_to_warehouse)
     return {"status": "synced"}
 ```
+```typescript TypeScript
+const endOfDaySync = defineWorkflow<SchedulePayload, {}, { status: string }>(
+  {
+    id: 'end-of-day-sync',
+    schedule: { cron: '0 17 * * *', timezone: 'America/New_York' }, // 5:00 PM
+  },
+  async (ctx, payload) => {
+    console.log(`Syncing at ${payload.timestamp} Eastern Time`);
+
+    await ctx.step.run('sync_data', () => syncToWarehouse());
+    return { status: 'synced' };
+  }
+);
+```
+</CodeGroup>
 
 ### 2. Create schedule via API
 
@@ -54,7 +93,8 @@ Mark a workflow as schedulable, then create one or more schedules for it via API
 
 This is useful for creating separate schedules per user or entity.
 
-```python
+<CodeGroup>
+```python Python
 # Define workflow as schedulable
 @workflow(
     id="user-reminder",
@@ -63,14 +103,32 @@ This is useful for creating separate schedules per user or entity.
 async def user_reminder(ctx: WorkflowContext, payload: SchedulePayload):
     user_id = payload.key  # Schedule key (e.g., user ID)
     print(f"Reminder for user {user_id} at {payload.timestamp}")
-    
+
     await ctx.step.run("send_reminder", send_user_reminder, user_id)
     return {"status": "sent"}
 ```
+```typescript TypeScript
+// Define workflow as schedulable
+const userReminder = defineWorkflow<SchedulePayload, {}, { status: string }>(
+  {
+    id: 'user-reminder',
+    schedule: true, // Can be scheduled via API
+  },
+  async (ctx, payload) => {
+    const userId = payload.key; // Schedule key (e.g., user ID)
+    console.log(`Reminder for user ${userId} at ${payload.timestamp}`);
+
+    await ctx.step.run('send_reminder', () => sendUserReminder(userId));
+    return { status: 'sent' };
+  }
+);
+```
+</CodeGroup>
 
 **Create schedule via API:**
 
-```python
+<CodeGroup>
+```python Python
 import asyncio
 from polos import schedules, PolosClient
 
@@ -83,12 +141,28 @@ async def schedule_user_reminders(client):
         timezone="America/Los_Angeles",
         key="user_123"  # Per-user schedule
     )
-    
+
     print(f"Created schedule: {schedule_id}")
 
 client = PolosClient()
 asyncio.run(schedule_user_reminders(client))
 ```
+```typescript TypeScript
+import { PolosClient } from '@polos/sdk';
+
+const client = PolosClient.fromEnv();
+
+// Schedule per-user reminder
+const scheduleId = await client.schedules.create(
+  'user-reminder',
+  '0 8 * * *',          // 8:00 AM daily
+  'America/Los_Angeles',
+  'user_123',           // Per-user schedule
+);
+
+console.log(`Created schedule: ${scheduleId}`);
+```
+</CodeGroup>
 
 ## Schedule payload
 
@@ -105,7 +179,10 @@ class SchedulePayload(BaseModel):
     schedule_id: str             # Unique identifier for this schedule
     key: str                     # User ID or custom identifier
     upcoming: datetime           # Next scheduled run time
+```
 
+<CodeGroup>
+```python Python
 @workflow(id="scheduled-task", schedule="0 */6 * * *")
 async def scheduled_task(ctx: WorkflowContext, payload: SchedulePayload):
     # Access schedule information
@@ -113,9 +190,27 @@ async def scheduled_task(ctx: WorkflowContext, payload: SchedulePayload):
     print(f"Last run: {payload.last_timestamp}")
     print(f"Next run: {payload.upcoming}")
     print(f"Schedule ID: {payload.schedule_id}")
-    
+
     return {"executed_at": payload.timestamp}
 ```
+```typescript TypeScript
+const scheduledTask = defineWorkflow<SchedulePayload, {}, { executedAt: Date }>(
+  {
+    id: 'scheduled-task',
+    schedule: '0 */6 * * *',
+  },
+  async (ctx, payload) => {
+    // Access schedule information
+    console.log(`Current run: ${payload.timestamp}`);
+    console.log(`Last run: ${payload.lastTimestamp}`);
+    console.log(`Next run: ${payload.upcoming}`);
+    console.log(`Schedule ID: ${payload.scheduleId}`);
+
+    return { executedAt: payload.timestamp };
+  }
+);
+```
+</CodeGroup>
 
 ## Cron expressions
 
@@ -123,7 +218,8 @@ async def scheduled_task(ctx: WorkflowContext, payload: SchedulePayload):
 
 **Common patterns:**
 
-```python
+<CodeGroup>
+```python Python
 # Every hour
 schedule="0 * * * *"
 
@@ -145,6 +241,29 @@ schedule="0 17 * * 1-5"
 # Every 6 hours
 schedule="0 */6 * * *"
 ```
+```typescript TypeScript
+// Every hour
+{ schedule: '0 * * * *' }
+
+// Every day at 9 AM
+{ schedule: '0 9 * * *' }
+
+// Every Monday at 8 AM
+{ schedule: '0 8 * * 1' }
+
+// Every 15 minutes
+{ schedule: '*/15 * * * *' }
+
+// First day of every month at midnight
+{ schedule: '0 0 1 * *' }
+
+// Weekdays at 5 PM
+{ schedule: '0 17 * * 1-5' }
+
+// Every 6 hours
+{ schedule: '0 */6 * * *' }
+```
+</CodeGroup>
 
 **Cron syntax:**
 
@@ -163,7 +282,8 @@ schedule="0 */6 * * *"
 
 ### Use appropriate cron intervals
 
-```python
+<CodeGroup>
+```python Python
 # ✅ GOOD: Reasonable intervals
 schedule="0 */6 * * *"  # Every 6 hours
 schedule="0 9 * * *"    # Daily at 9 AM
@@ -171,12 +291,22 @@ schedule="0 9 * * *"    # Daily at 9 AM
 # ❌ BAD: Too frequent (use events or queues instead)
 schedule="* * * * *"    # Every minute
 ```
+```typescript TypeScript
+// ✅ GOOD: Reasonable intervals
+{ schedule: '0 */6 * * *' }  // Every 6 hours
+{ schedule: '0 9 * * *' }    // Daily at 9 AM
+
+// ❌ BAD: Too frequent (use events or queues instead)
+{ schedule: '* * * * *' }    // Every minute
+```
+</CodeGroup>
 
 ## Per-user schedules
 
 Use the `key` parameter to create separate schedules for each user or entity:
 
-```python
+<CodeGroup>
+```python Python
 from polos import schedules, PolosClient
 
 async def setup_user_schedule(client, user_id: str, preferences: dict):
@@ -188,7 +318,7 @@ async def setup_user_schedule(client, user_id: str, preferences: dict):
         timezone=preferences["timezone"],
         key=user_id  # Unique per user
     )
-    
+
     return schedule_id
 
 client = PolosClient()
@@ -197,21 +327,67 @@ client = PolosClient()
 await setup_user_schedule(client, "user_123", {"timezone": "America/New_York"})
 await setup_user_schedule(client, "user_456", {"timezone": "Europe/London"})
 ```
+```typescript TypeScript
+import { PolosClient } from '@polos/sdk';
+
+const client = PolosClient.fromEnv();
+
+async function setupUserSchedule(
+  client: PolosClient,
+  userId: string,
+  preferences: { timezone: string }
+) {
+  // Create/update per-user schedule
+  const scheduleId = await client.schedules.create(
+    'daily-digest',
+    '0 8 * * *',             // 8 AM
+    preferences.timezone,
+    userId,                   // Unique per user
+  );
+
+  return scheduleId;
+}
+
+// Each user gets their own schedule
+await setupUserSchedule(client, 'user_123', { timezone: 'America/New_York' });
+await setupUserSchedule(client, 'user_456', { timezone: 'Europe/London' });
+```
+</CodeGroup>
 
 **In the workflow:**
 
-```python
+<CodeGroup>
+```python Python
 @workflow(id="daily-digest", schedule=True)
 async def daily_digest(ctx: WorkflowContext, payload: SchedulePayload):
     user_id = payload.key  # Get user from schedule key
-    
+
     # Fetch user-specific data
     user = await ctx.step.run("get_user", get_user, user_id)
     digest = await ctx.step.run("generate", create_digest, user)
     await ctx.step.run("send", send_email, user.email, digest)
-    
+
     return {"user_id": user_id, "sent": True}
 ```
+```typescript TypeScript
+const dailyDigest = defineWorkflow<SchedulePayload, {}, { userId: string; sent: boolean }>(
+  {
+    id: 'daily-digest',
+    schedule: true,
+  },
+  async (ctx, payload) => {
+    const userId = payload.key; // Get user from schedule key
+
+    // Fetch user-specific data
+    const user = await ctx.step.run('get_user', () => getUser(userId));
+    const digest = await ctx.step.run('generate', () => createDigest(user));
+    await ctx.step.run('send', () => sendEmail(user.email, digest));
+
+    return { userId, sent: true };
+  }
+);
+```
+</CodeGroup>
 
 **Key behavior:**
 
@@ -223,7 +399,8 @@ async def daily_digest(ctx: WorkflowContext, payload: SchedulePayload):
 
 Always specify timezones for scheduled workflows to avoid confusion:
 
-```python
+<CodeGroup>
+```python Python
 @workflow(
     id="morning-report",
     schedule={
@@ -235,6 +412,19 @@ async def morning_report(ctx: WorkflowContext, payload: SchedulePayload):
     # Runs at 9 AM Eastern time, adjusts for DST automatically
     return {"executed_at": payload.timestamp}
 ```
+```typescript TypeScript
+const morningReport = defineWorkflow<SchedulePayload, {}, { executedAt: Date }>(
+  {
+    id: 'morning-report',
+    schedule: { cron: '0 9 * * *', timezone: 'America/New_York' }, // Runs at 9 AM Eastern
+  },
+  async (ctx, payload) => {
+    // Runs at 9 AM Eastern time, adjusts for DST automatically
+    return { executedAt: payload.timestamp };
+  }
+);
+```
+</CodeGroup>
 
 **Common timezones:**
 
@@ -249,7 +439,8 @@ async def morning_report(ctx: WorkflowContext, payload: SchedulePayload):
 
 ### Create or update a schedule
 
-```python
+<CodeGroup>
+```python Python
 from polos import schedules, PolosClient
 
 client = PolosClient()
@@ -272,10 +463,33 @@ schedule_id = await schedules.create(
     key="user_789"
 )
 ```
+```typescript TypeScript
+import { PolosClient } from '@polos/sdk';
+
+const client = PolosClient.fromEnv();
+
+// Global schedule (one per workflow)
+const globalScheduleId = await client.schedules.create(
+  'cleanup-task',
+  '0 3 * * *',   // 3 AM daily
+  'UTC',
+  'global',
+);
+
+// Per-user schedule
+const userScheduleId = await client.schedules.create(
+  'user-notification',
+  '0 12 * * *',          // Noon daily
+  'America/Chicago',
+  'user_789',
+);
+```
+</CodeGroup>
 
 **Update existing schedule:**
 
-```python
+<CodeGroup>
+```python Python
 # Calling create() with the same workflow and key updates it
 schedule_id = await schedules.create(
     client,
@@ -285,3 +499,13 @@ schedule_id = await schedules.create(
     key="user_789"  # Same key = update
 )
 ```
+```typescript TypeScript
+// Calling create() with the same workflow and key updates it
+const scheduleId = await client.schedules.create(
+  'user-notification',
+  '0 15 * * *',          // Change to 3 PM
+  'America/Chicago',
+  'user_789',            // Same key = update
+);
+```
+</CodeGroup>

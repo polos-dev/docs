@@ -20,25 +20,47 @@ Waits enable workflows to:
 
 Pause for a duration:
 
-```python
+<CodeGroup>
+```python Python
 from polos import workflow, WorkflowContext
 
 @workflow
 async def delayed_workflow(ctx: WorkflowContext, input: WorkflowInput):
     # Process immediately
     data = await ctx.step.run("fetch", fetch_data)
-    
+
     # Wait 1 hour (worker suspends)
     await ctx.step.wait_for("wait_1_hour", hours=1)
-    
+
     # Resume after 1 hour
     result = await ctx.step.run("process", process_data, data)
     return result
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const delayedWorkflow = defineWorkflow<WorkflowInput, void, Result>(
+  { id: 'delayed_workflow' },
+  async (ctx, input) => {
+    // Process immediately
+    const data = await ctx.step.run('fetch', () => fetchData());
+
+    // Wait 1 hour (worker suspends)
+    await ctx.step.waitFor('wait_1_hour', { hours: 1 });
+
+    // Resume after 1 hour
+    const result = await ctx.step.run('process', () => processData(data));
+    return result;
+  }
+);
+```
+</CodeGroup>
+
 **Available time units:**
 
-```python
+<CodeGroup>
+```python Python
 # Wait 30 seconds
 await ctx.step.wait_for("wait", seconds=30)
 
@@ -58,28 +80,70 @@ await ctx.step.wait_for("wait", weeks=1)
 await ctx.step.wait_for("wait", hours=1, minutes=30)  # 1.5 hours
 ```
 
+```typescript TypeScript
+// Wait 30 seconds
+await ctx.step.waitFor('wait', { seconds: 30 });
+
+// Wait 5 minutes
+await ctx.step.waitFor('wait', { minutes: 5 });
+
+// Wait 2 hours
+await ctx.step.waitFor('wait', { hours: 2 });
+
+// Wait 3 days
+await ctx.step.waitFor('wait', { days: 3 });
+
+// Wait 1 week
+await ctx.step.waitFor('wait', { weeks: 1 });
+
+// Combine units
+await ctx.step.waitFor('wait', { hours: 1, minutes: 30 }); // 1.5 hours
+```
+</CodeGroup>
+
 ### 2. Timestamp-based: `wait_until`
 
 Wait until a specific datetime
 
-```python
+<CodeGroup>
+```python Python
 from datetime import datetime, timezone
 
 @workflow
 async def scheduled_action(ctx: WorkflowContext, input: dict):
     # Schedule for specific time
     target_time = datetime(2025, 12, 31, 23, 59, 0, tzinfo=timezone.utc)
-    
+
     # Wait until exactly 23:59 on Dec 31, 2025
     await ctx.step.wait_until("wait_new_year", target_time)
-    
+
     # Executes at the specified time
     await ctx.step.run("celebrate", send_celebration)
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const scheduledAction = defineWorkflow<Record<string, unknown>, void, void>(
+  { id: 'scheduled_action' },
+  async (ctx, input) => {
+    // Schedule for specific time
+    const targetTime = new Date('2025-12-31T23:59:00Z');
+
+    // Wait until exactly 23:59 on Dec 31, 2025
+    await ctx.step.waitUntil('wait_new_year', targetTime);
+
+    // Executes at the specified time
+    await ctx.step.run('celebrate', () => sendCelebration());
+  }
+);
+```
+</CodeGroup>
+
 **Timezone handling:**
 
-```python
+<CodeGroup>
+```python Python
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -90,22 +154,33 @@ await ctx.step.wait_until("wait_morning", target)
 # If target is in the past, raises error
 ```
 
+```typescript TypeScript
+// Wait until 9 AM Eastern Time
+// Use a timezone-aware library like date-fns-tz to construct the date
+const target = new Date('2025-02-01T14:00:00Z'); // 9 AM ET = 14:00 UTC
+await ctx.step.waitUntil('wait_morning', target);
+
+// If target is in the past, throws error
+```
+</CodeGroup>
+
 ### 3. Event-based: `wait_for_event`
 
 Wait for an external event:
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def approval_workflow(ctx: WorkflowContext, input: dict):
     # Submit for approval
     await ctx.step.run("submit", submit_for_approval, input)
-    
+
     # Wait for approval event (hours or days)
     approval = await ctx.step.wait_for_event(
         "wait_approval",
         topic="approval/response"
     )
-    
+
     # Resume when event arrives
     if approval.data["approved"]:
         await ctx.step.run("execute", execute_action, input)
@@ -113,9 +188,35 @@ async def approval_workflow(ctx: WorkflowContext, input: dict):
         return {"status": "rejected"}
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const approvalWorkflow = defineWorkflow<Record<string, unknown>, void, { status: string }>(
+  { id: 'approval_workflow' },
+  async (ctx, input) => {
+    // Submit for approval
+    await ctx.step.run('submit', () => submitForApproval(input));
+
+    // Wait for approval event (hours or days)
+    const approval = await ctx.step.waitForEvent('wait_approval', {
+      topic: 'approval/response',
+    });
+
+    // Resume when event arrives
+    if (approval.data['approved']) {
+      await ctx.step.run('execute', () => executeAction(input));
+    } else {
+      return { status: 'rejected' };
+    }
+  }
+);
+```
+</CodeGroup>
+
 **With timeout:**
 
-```python
+<CodeGroup>
+```python Python
 # Wait for event with 24-hour timeout
 try:
     approval = await ctx.step.wait_for_event(
@@ -129,6 +230,22 @@ except StepExecutionError:
     # Timeout expired without event
     return {"status": "timeout"}
 ```
+
+```typescript TypeScript
+// Wait for event with 24-hour timeout
+try {
+  const approval = await ctx.step.waitForEvent('wait_approval', {
+    topic: 'approval.response',
+    timeout: 86400, // 24 hours in seconds
+  });
+  // Event received
+  return { approved: approval.data['approved'] };
+} catch {
+  // Timeout expired without event
+  return { status: 'timeout' };
+}
+```
+</CodeGroup>
 
 ## Wait behavior
 
@@ -155,7 +272,8 @@ When a workflow waits:
 - Orchestrator schedules resumption
 - Essential for hours/days/weeks
 
-```python
+<CodeGroup>
+```python Python
 # Short wait - worker sleeps inline
 await ctx.step.wait_for("short", seconds=5)
 
@@ -163,16 +281,26 @@ await ctx.step.wait_for("short", seconds=5)
 await ctx.step.wait_for("long", minutes=30)
 ```
 
+```typescript TypeScript
+// Short wait - worker sleeps inline
+await ctx.step.waitFor('short', { seconds: 5 });
+
+// Long wait - worker suspends
+await ctx.step.waitFor('long', { minutes: 30 });
+```
+</CodeGroup>
+
 ## Publishing events to resume waits
 
 ### From within a workflow
 
-```python
+<CodeGroup>
+```python Python
 @workflow
 async def publisher_workflow(ctx: WorkflowContext, input: dict):
     # Process data
     result = await ctx.step.run("process", process_data, input)
-    
+
     # Publish event (resumes workflows waiting on this topic)
     await ctx.step.publish_event(
         "notify",
@@ -182,13 +310,38 @@ async def publisher_workflow(ctx: WorkflowContext, input: dict):
             "approved_by": "alice@example.com"
         }
     )
-    
+
     return result
 ```
 
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+const publisherWorkflow = defineWorkflow<Record<string, unknown>, void, unknown>(
+  { id: 'publisher_workflow' },
+  async (ctx, input) => {
+    // Process data
+    const result = await ctx.step.run('process', () => processData(input));
+
+    // Publish event (resumes workflows waiting on this topic)
+    await ctx.step.publishEvent('notify', {
+      topic: 'approval/response',
+      data: {
+        approved: true,
+        approvedBy: 'alice@example.com',
+      },
+    });
+
+    return result;
+  }
+);
+```
+</CodeGroup>
+
 ### From external systems (API)
 
-```python
+<CodeGroup>
+```python Python
 import httpx
 
 async def send_approval(approved: bool, approved_by: str):
@@ -214,3 +367,29 @@ async def send_approval(approved: bool, approved_by: str):
 # Resume waiting workflow
 await send_approval(approved=True, approved_by="alice@example.com")
 ```
+
+```typescript TypeScript
+async function sendApproval(approved: boolean, approvedBy: string) {
+  /** Send approval event via API. */
+  await fetch('https://api.polos.ai/api/v1/events/publish', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_API_KEY',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      topic: 'approval/response',
+      events: [{
+        data: {
+          approved,
+          approved_by: approvedBy,
+        },
+      }],
+    }),
+  });
+}
+
+// Resume waiting workflow
+await sendApproval(true, 'alice@example.com');
+```
+</CodeGroup>
