@@ -1,0 +1,223 @@
+---
+title: "19 - Exec Security"
+description: "Allowlist-based command approval for sandbox agents"
+---
+
+A coding agent with exec security configured as an allowlist. Commands matching the allowlist patterns run immediately; everything else suspends for user approval. Users can reject commands and provide feedback so the agent adjusts its approach.
+
+## Configure exec security
+
+<CodeGroup>
+
+```python Python
+import os
+from polos import (
+    Agent, max_steps, MaxStepsConfig,
+    sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig, ExecToolConfig,
+    create_ask_user_tool,
+)
+
+workspace_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace")
+
+# Sandbox tools with exec security -- only allowlisted commands run
+# without approval. Everything else suspends for the user to decide.
+tools = sandbox_tools(
+    SandboxToolsConfig(
+        env="docker",
+        docker=DockerEnvironmentConfig(
+            image="node:20-slim",
+            workspace_dir=workspace_dir,
+            network="bridge",
+        ),
+        exec=ExecToolConfig(
+            security="allowlist",
+            allowlist=[
+                "node *",   # allow running node scripts
+                "cat *",    # allow reading files
+                "echo *",   # allow echo
+                "ls *",     # allow listing
+                "ls",       # allow bare ls
+            ],
+        ),
+    )
+)
+
+# Ask-user tool -- lets the agent ask the user questions during execution
+ask_user = create_ask_user_tool()
+```
+
+```typescript TypeScript
+import { defineAgent, maxSteps, sandboxTools, createAskUserTool } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+import path from 'node:path';
+
+const workspaceDir = path.resolve(process.cwd(), 'workspace');
+
+// Sandbox tools with exec security — only allowlisted commands run
+// without approval. Everything else suspends for the user to decide.
+export const tools = sandboxTools({
+  env: 'docker',
+  docker: {
+    image: 'node:20-slim',
+    workspaceDir,
+    network: 'bridge',
+  },
+  exec: {
+    security: 'allowlist',
+    allowlist: [
+      'node *',    // allow running node scripts
+      'cat *',     // allow reading files
+      'echo *',    // allow echo
+      'ls *',      // allow listing
+      'ls',        // allow bare ls
+    ],
+  },
+});
+
+// Ask-user tool — lets the agent ask the user questions during execution
+const askUser = createAskUserTool();
+```
+
+</CodeGroup>
+
+## Define the agent
+
+<CodeGroup>
+
+```python Python
+coding_agent = Agent(
+    id="secure_coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        "You are a coding agent with access to a sandbox environment. "
+        "You can create files, edit code, run shell commands, and search the codebase. "
+        "The workspace is at /workspace inside the container. "
+        "Some commands may need user approval before running. If a command is rejected, "
+        "read the user feedback in the error output and adjust your approach accordingly. "
+        "Always verify your work by running the code after writing it. "
+        "If you need clarification or a decision from the user, use the ask_user tool."
+    ),
+    tools=[*tools, ask_user],
+    stop_conditions=[max_steps(MaxStepsConfig(count=30))],
+    conversation_history=50,
+)
+```
+
+```typescript TypeScript
+export const codingAgent = defineAgent({
+  id: 'secure_coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt:
+    'You are a coding agent with access to a sandbox environment. ' +
+    'You can create files, edit code, run shell commands, and search the codebase. ' +
+    'The workspace is at /workspace inside the container. ' +
+    'Some commands may need user approval before running. If a command is rejected, ' +
+    'read the user feedback in the error output and adjust your approach accordingly. ' +
+    'Always verify your work by running the code after writing it. ' +
+    'If you need clarification or a decision from the user, use the ask_user tool.',
+  tools: [...tools, askUser],
+  stopConditions: [maxSteps({ count: 30 })],
+  conversationHistory: 50,
+});
+```
+
+</CodeGroup>
+
+## Handle approval events
+
+When the agent tries to run a command that isn't in the allowlist, the workflow suspends. The client catches the suspend event, shows the command, and collects the user's decision.
+
+<CodeGroup>
+
+```python Python
+async for suspend in stream_events(client, handle):
+    if suspend["step_key"].startswith("approve_exec"):
+        # Show command and ask for approval
+        form = suspend["data"].get("_form", {})
+        context = form.get("context", {})
+        command = context.get("command", "unknown")
+
+        print(f"  Command: {command}")
+        approved = input("  Approve? (y/n): ").strip().lower() == "y"
+
+        feedback = None
+        if not approved:
+            feedback = input("  Feedback: ").strip() or None
+
+        resume_data = {"approved": approved, "allow_always": False}
+        if feedback:
+            resume_data["feedback"] = feedback
+
+        await client.resume(
+            suspend_workflow_id=handle.root_workflow_id,
+            suspend_execution_id=handle.id,
+            suspend_step_key=suspend["step_key"],
+            data=resume_data,
+        )
+```
+
+```typescript TypeScript
+for await (const suspend of streamEvents(client, handle)) {
+  if (suspend.stepKey.startsWith('approve_exec')) {
+    // Show command and ask for approval
+    const form = suspend.data['_form'] as Record<string, unknown> | undefined;
+    const context = (form?.['context'] ?? {}) as Record<string, unknown>;
+    const command = String(context['command'] ?? 'unknown');
+
+    console.log(`  Command: ${command}`);
+    const approved = await askYesNo('  Approve?');
+
+    let feedback: string | undefined;
+    if (!approved) {
+      feedback = (await ask('  Feedback: ')) || undefined;
+    }
+
+    const resumeData: Record<string, unknown> = { approved, allow_always: false };
+    if (feedback) resumeData['feedback'] = feedback;
+
+    await client.resume(handle.rootWorkflowId, handle.id, suspend.stepKey, resumeData);
+  }
+}
+```
+
+</CodeGroup>
+
+## How it works
+
+1. The `exec` tool checks each command against the allowlist patterns
+2. Matching commands (e.g., `node hello.js`) run immediately
+3. Non-matching commands (e.g., `npm install chalk`) suspend the workflow
+4. The client receives a suspend event with the command details
+5. If rejected with feedback, the agent reads the feedback and tries a different approach
+6. The `ask_user` tool lets the agent proactively ask for clarification
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/19-exec-security
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/19-exec-security
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
+The demo task asks the agent to install an npm package (which requires approval) and run node scripts (which are allowlisted). You'll see the difference between auto-approved and manually-approved commands in action.
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/19-exec-security) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/19-exec-security)

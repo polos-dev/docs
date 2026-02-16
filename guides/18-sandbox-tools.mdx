@@ -1,0 +1,182 @@
+---
+title: "18 - Sandbox Tools"
+description: "Code execution in an isolated Docker container"
+---
+
+A coding agent that writes and executes code inside an isolated Docker container. The agent gets six built-in tools (`exec`, `read`, `write`, `edit`, `glob`, `grep`) that all operate inside the container, with the workspace directory bind-mounted from the host.
+
+## Create sandbox tools
+
+<CodeGroup>
+
+```python Python
+import os
+from polos import (
+    Agent, max_steps, MaxStepsConfig,
+    sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig,
+)
+
+# Workspace directory on the host -- gets mounted into the container at /workspace
+workspace_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace")
+
+# Create sandbox tools that run inside a Docker container
+tools = sandbox_tools(
+    SandboxToolsConfig(
+        env="docker",
+        docker=DockerEnvironmentConfig(
+            image="node:20-slim",
+            workspace_dir=workspace_dir,
+            # setup_command="npm install",  # optional: run after container creation
+            # memory="512m",               # optional: limit container memory
+            # network="none",              # default: no network access
+        ),
+    )
+)
+```
+
+```typescript TypeScript
+import { defineAgent, maxSteps, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+import path from 'node:path';
+
+// Workspace directory on the host — this gets mounted into the container at /workspace
+const workspaceDir = path.resolve(process.cwd(), 'workspace');
+
+// Create sandbox tools that run inside a Docker container
+export const tools = sandboxTools({
+  env: 'docker',
+  docker: {
+    image: 'node:20-slim',
+    workspaceDir,
+    // setupCommand: 'npm install',  // optional: run after container creation
+    // memory: '512m',               // optional: limit container memory
+    // network: 'none',              // optional: no network access
+  },
+});
+```
+
+</CodeGroup>
+
+## Define the agent
+
+<CodeGroup>
+
+```python Python
+coding_agent = Agent(
+    id="coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        "You are a coding agent with access to a sandbox environment. "
+        "You can create files, edit code, run shell commands, and search the codebase. "
+        "The workspace is at /workspace inside the container. "
+        "Use the tools to complete the task, then summarize what you did and show the output. "
+        "Always verify your work by running the code after writing it. "
+        "In your final response, include the actual output from running the code."
+    ),
+    tools=tools,
+    stop_conditions=[max_steps(MaxStepsConfig(count=50))],
+)
+```
+
+```typescript TypeScript
+export const codingAgent = defineAgent({
+  id: 'coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt:
+    'You are a coding agent with access to a sandbox environment. ' +
+    'You can create files, edit code, run shell commands, and search the codebase. ' +
+    'The workspace is at /workspace inside the container. ' +
+    'Use the tools to complete the task, then summarize what you did and show the output. ' +
+    'Always verify your work by running the code after writing it. ' +
+    'In your final response, include the actual output from running the code.',
+  tools,
+  stopConditions: [maxSteps({ count: 50 })],
+});
+```
+
+</CodeGroup>
+
+## Stream activity
+
+The client invokes the agent and streams text deltas and tool calls in real time.
+
+<CodeGroup>
+
+```python Python
+from polos import PolosClient
+from polos.features import events
+
+handle = await client.invoke(
+    coding_agent.id, {"input": task, "conversationId": conversation_id, "streaming": True}
+)
+
+async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+    if event.event_type == "text_delta":
+        content = event.data.get("content") if isinstance(event.data, dict) else None
+        if isinstance(content, str):
+            print(content, end="", flush=True)
+    elif event.event_type == "tool_call":
+        tool_call = event.data.get("tool_call", {}) if isinstance(event.data, dict) else {}
+        tool_name = tool_call.get("function", {}).get("name", "unknown")
+        print(f"\n  [Using {tool_name}...]")
+```
+
+```typescript TypeScript
+const handle = await client.invoke(
+  codingAgent.id, { input: task, conversationId, streaming: true }
+);
+
+for await (const event of client.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
+  if (event.eventType === 'text_delta') {
+    const content = (event.data as Record<string, unknown>)['content'];
+    if (typeof content === 'string') {
+      process.stdout.write(content);
+    }
+  } else if (event.eventType === 'tool_call') {
+    const toolCall = (event.data as Record<string, unknown>)['tool_call'] as Record<string, unknown> | undefined;
+    const fn = toolCall?.['function'] as Record<string, unknown> | undefined;
+    console.log(`\n  [Using ${String(fn?.['name'] ?? 'unknown')}...]`);
+  }
+}
+```
+
+</CodeGroup>
+
+## How it works
+
+1. `sandboxTools()` creates six tools that operate inside a Docker container
+2. The container is created lazily on first use and reused across tool calls
+3. The host `workspace` directory is bind-mounted into the container at `/workspace`
+4. The agent can write files, run commands, and search the codebase — all isolated from your host system
+5. On shutdown, `tools.cleanup()` removes the container
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/18-sandbox-tools
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/18-sandbox-tools
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
+<Note>Docker must be installed and running. The container image (`node:20-slim`) will be pulled automatically on first run.</Note>
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/18-sandbox-tools) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/18-sandbox-tools)

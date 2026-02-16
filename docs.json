@@ -39,6 +39,7 @@
             "pages": [
               "agents/overview",
               "agents/tools",
+              "agents/sandbox",
               "agents/streaming",
               "agents/structured-outputs",
               "agents/human-in-the-loop",
@@ -90,7 +91,12 @@
               "guides/14-multi-agent-review",
               "guides/15-event-triggered",
               "guides/16-scheduled-workflows",
-              "guides/17-order-processing"
+              "guides/17-order-processing",
+              "guides/18-sandbox-tools",
+              "guides/19-exec-security",
+              "guides/20-web-search-agent",
+              "guides/21-local-sandbox",
+              "guides/22-approval-page"
             ]
           },
           {
@@ -240,8 +246,8 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/polos-dev",
-      "github": "https://github.com/polos-dev",
+      "x": "https://x.com/polos_dev",
+      "github": "https://github.com/polos-dev/polos",
       "linkedin": "https://linkedin.com/company/polos-dev"
     }
   }

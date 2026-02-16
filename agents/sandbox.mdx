@@ -1,0 +1,408 @@
+---
+title: "Sandbox"
+description: "Isolated execution environments for autonomous agents"
+icon: "shield-halved"
+---
+
+Sandbox tools give agents the ability to write code, run shell commands, and explore a codebase - all inside a controlled environment.
+A single call to `sandbox_tools()` creates six tools (`exec`, `read`, `write`, `edit`, `glob`, `grep`) that share an execution environment.
+
+<CodeGroup>
+
+```python Python
+from polos import Agent, sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    docker=DockerEnvironmentConfig(
+        image="node:20-slim",
+        workspace_dir="./workspace",
+    ),
+))
+
+coding_agent = Agent(
+    id="coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt="You are a coding assistant. The repo is at /workspace.",
+    tools=tools,
+)
+```
+
+```typescript TypeScript
+import { defineAgent, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+const tools = sandboxTools({
+  env: 'docker',
+  docker: {
+    image: 'node:20-slim',
+    workspaceDir: './workspace',
+  },
+});
+
+const codingAgent = defineAgent({
+  id: 'coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt: 'You are a coding assistant. The repo is at /workspace.',
+  tools: [...tools],
+});
+```
+
+</CodeGroup>
+
+## Environments
+
+Polos supports three execution environments. The environment determines where tools execute and what isolation guarantees you get.
+
+| Environment | Isolation | Requires | Best for |
+|---|---|---|---|
+| `docker` (default) | Container | Docker | Production, untrusted code |
+| `local` | None (host machine) | Nothing | Development, trusted agents |
+| `e2b` (coming soon) | Cloud sandbox | E2B account | Cloud-native deployments |
+
+### Docker
+
+Commands run inside an isolated Docker container. Your host workspace directory is bind-mounted into the container.
+
+<CodeGroup>
+
+```python Python
+from polos import sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    docker=DockerEnvironmentConfig(
+        image="node:20-slim",
+        workspace_dir="./workspace",
+        # container_workdir="/workspace",  # default
+        # memory="512m",                   # memory limit
+        # cpus="1",                        # CPU limit
+        # network="none",                  # default: no network
+        # setup_command="npm install",     # run after container creation
+        # env={"NODE_ENV": "production"},  # environment variables
+    ),
+))
+```
+
+```typescript TypeScript
+import { sandboxTools } from '@polos/sdk';
+
+const tools = sandboxTools({
+  env: 'docker',
+  docker: {
+    image: 'node:20-slim',
+    workspaceDir: './workspace',
+    // containerWorkdir: '/workspace',  // default
+    // memory: '512m',                  // memory limit
+    // cpus: '1',                       // CPU limit
+    // network: 'none',                 // default: no network
+    // setupCommand: 'npm install',     // run after container creation
+    // env: { NODE_ENV: 'production' }, // environment variables
+  },
+});
+```
+
+</CodeGroup>
+
+#### Docker configuration
+
+| Option | Default | Description |
+|---|---|---|
+| `image` | *required* | Docker image (e.g., `"node:20-slim"`, `"python:3.12-slim"`) |
+| `workspace_dir` / `workspaceDir` | *required* | Host directory mounted into the container |
+| `container_workdir` / `containerWorkdir` | `"/workspace"` | Working directory inside the container |
+| `memory` | No limit | Memory limit (e.g., `"512m"`, `"2g"`) |
+| `cpus` | No limit | CPU limit (e.g., `"1"`, `"0.5"`) |
+| `network` | `"none"` | Network mode. Use `"bridge"` to allow network access |
+| `setup_command` / `setupCommand` | None | Command to run after container creation |
+| `env` | None | Environment variables set inside the container |
+
+The container is created lazily on the first tool call and reused for subsequent calls. Call `tools.cleanup()` to destroy it when done.
+
+### Local
+
+Commands run directly on your host machine. Since there's no container isolation, exec security defaults to `approval-always` and file operations default to requiring approval.
+
+<CodeGroup>
+
+```python Python
+from polos import sandbox_tools, SandboxToolsConfig, LocalEnvironmentConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="local",
+    local=LocalEnvironmentConfig(
+        cwd="./workspace",
+        path_restriction="./workspace",  # confine file access
+    ),
+))
+```
+
+```typescript TypeScript
+import { sandboxTools } from '@polos/sdk';
+
+const tools = sandboxTools({
+  env: 'local',
+  local: {
+    cwd: './workspace',
+    pathRestriction: './workspace',  // confine file access
+  },
+});
+```
+
+</CodeGroup>
+
+#### Local configuration
+
+| Option | Default | Description |
+|---|---|---|
+| `cwd` | Current working directory | Working directory for commands |
+| `path_restriction` / `pathRestriction` | None | Restrict file operations to this directory. Symlink traversal is blocked. |
+
+#### Local mode defaults
+
+In local mode, Polos applies stricter defaults since there's no container boundary:
+
+| Setting | Local default | Docker default |
+|---|---|---|
+| Exec security | `approval-always` | No check |
+| File approval (write/edit) | `always` | None |
+| Path restriction (read/glob/grep) | Approval required outside workspace | No restriction |
+
+### E2B
+
+<Note>E2B support is coming soon. The configuration is defined but not yet implemented.</Note>
+
+<CodeGroup>
+
+```python Python
+from polos import sandbox_tools, SandboxToolsConfig, E2BEnvironmentConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="e2b",
+    e2b=E2BEnvironmentConfig(
+        template="base",
+        # api_key="...",          # defaults to E2B_API_KEY env var
+        # timeout=3600,           # sandbox timeout in seconds
+        # cwd="/workspace",       # working directory
+        # setup_command="...",    # setup command
+    ),
+))
+```
+
+```typescript TypeScript
+import { sandboxTools } from '@polos/sdk';
+
+const tools = sandboxTools({
+  env: 'e2b',
+  e2b: {
+    template: 'base',
+    // apiKey: '...',          // defaults to E2B_API_KEY env var
+    // timeout: 3600,          // sandbox timeout in seconds
+    // cwd: '/workspace',      // working directory
+    // setupCommand: '...',    // setup command
+  },
+});
+```
+
+</CodeGroup>
+
+## Built-in tools
+
+`sandbox_tools()` creates six tools that all operate within the shared environment:
+
+| Tool | Description |
+|---|---|
+| `exec` | Run shell commands |
+| `read` | Read file contents |
+| `write` | Write/create files |
+| `edit` | Find-and-replace in files |
+| `glob` | Find files by pattern |
+| `grep` | Search file contents |
+
+To include only a subset of tools:
+
+<CodeGroup>
+
+```python Python
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    docker=DockerEnvironmentConfig(image="node:20-slim", workspace_dir="./workspace"),
+    tools=["exec", "read", "write"],  # only these three
+))
+```
+
+```typescript TypeScript
+const tools = sandboxTools({
+  env: 'docker',
+  docker: { image: 'node:20-slim', workspaceDir: './workspace' },
+  tools: ['exec', 'read', 'write'],  // only these three
+});
+```
+
+</CodeGroup>
+
+## Exec security
+
+The `exec` tool supports three security modes that control which shell commands can run without user approval.
+
+<CodeGroup>
+
+```python Python
+from polos import sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig, ExecToolConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    docker=DockerEnvironmentConfig(image="node:20-slim", workspace_dir="./workspace"),
+    exec=ExecToolConfig(
+        security="allowlist",
+        allowlist=["node *", "cat *", "ls *", "ls", "echo *"],
+        # timeout=300,            # command timeout in seconds (default: 300)
+        # max_output_chars=100000, # truncate output after this many chars
+    ),
+))
+```
+
+```typescript TypeScript
+import { sandboxTools } from '@polos/sdk';
+
+const tools = sandboxTools({
+  env: 'docker',
+  docker: { image: 'node:20-slim', workspaceDir: './workspace' },
+  exec: {
+    security: 'allowlist',
+    allowlist: ['node *', 'cat *', 'ls *', 'ls', 'echo *'],
+    // timeout: 300,            // command timeout in seconds (default: 300)
+    // maxOutputChars: 100000,  // truncate output after this many chars
+  },
+});
+```
+
+</CodeGroup>
+
+### Security modes
+
+| Mode | Behavior |
+|---|---|
+| `allow-always` | All commands run without approval. Default for Docker and E2B. |
+| `allowlist` | Commands matching patterns run automatically. Non-matching commands suspend for approval. |
+| `approval-always` | Every command suspends for user approval. Default for local mode. |
+
+Allowlist patterns use glob-style matching. `"node *"` matches `node hello.js` but not `npm install`.
+
+When a command is rejected, the agent receives the rejection along with any feedback the user provided, and can adjust its approach.
+
+### Exec configuration
+
+| Option | Default | Description |
+|---|---|---|
+| `security` | `allow-always` (Docker), `approval-always` (local) | Security mode |
+| `allowlist` | None | Command patterns for `allowlist` mode |
+| `timeout` | `300` | Command timeout in seconds |
+| `max_output_chars` / `maxOutputChars` | `100000` | Truncate output after this many characters |
+
+## File approval
+
+Write and edit operations can require user approval before modifying files.
+
+<CodeGroup>
+
+```python Python
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    docker=DockerEnvironmentConfig(image="node:20-slim", workspace_dir="./workspace"),
+    file_approval="always",  # require approval for write and edit
+))
+```
+
+```typescript TypeScript
+const tools = sandboxTools({
+  env: 'docker',
+  docker: { image: 'node:20-slim', workspaceDir: './workspace' },
+  fileApproval: 'always',  // require approval for write and edit
+});
+```
+
+</CodeGroup>
+
+| Value | Behavior |
+|---|---|
+| `"always"` | Write and edit suspend for approval. Default for local mode. |
+| `"none"` | No approval required. Default for Docker and E2B. |
+
+## Path restriction
+
+When `path_restriction` / `pathRestriction` is set (local mode), read-only tools (`read`, `glob`, `grep`) run freely within the restricted directory but suspend for approval when accessing paths outside it. Symlink traversal outside the restriction is blocked.
+
+<CodeGroup>
+
+```python Python
+tools = sandbox_tools(SandboxToolsConfig(
+    env="local",
+    local=LocalEnvironmentConfig(
+        cwd="./workspace",
+        path_restriction="./workspace",
+    ),
+))
+# read("./workspace/file.txt")  → runs immediately
+# read("/etc/hosts")            → suspends for approval
+```
+
+```typescript TypeScript
+const tools = sandboxTools({
+  env: 'local',
+  local: {
+    cwd: './workspace',
+    pathRestriction: './workspace',
+  },
+});
+// read('./workspace/file.txt')  → runs immediately
+// read('/etc/hosts')            → suspends for approval
+```
+
+</CodeGroup>
+
+## Cleanup
+
+The execution environment (Docker container, E2B sandbox) is created lazily on the first tool call. Call `cleanup()` to destroy it when you're done.
+
+<CodeGroup>
+
+```python Python
+import signal, asyncio
+
+loop = asyncio.get_event_loop()
+loop.add_signal_handler(signal.SIGINT, lambda: asyncio.ensure_future(tools.cleanup()))
+
+# Or in a try/finally
+try:
+    await worker.run()
+finally:
+    await tools.cleanup()
+```
+
+```typescript TypeScript
+process.on('SIGINT', async () => {
+  await tools.cleanup();
+  process.exit(0);
+});
+```
+
+</CodeGroup>
+
+## Examples
+
+<CardGroup cols={2}>
+  <Card title="Sandbox Tools" icon="docker" href="/guides/18-sandbox-tools">
+    Docker-based code execution
+  </Card>
+  <Card title="Exec Security" icon="lock" href="/guides/19-exec-security">
+    Allowlist-based command approval
+  </Card>
+  <Card title="Local Sandbox" icon="desktop" href="/guides/21-local-sandbox">
+    Host-based sandbox without Docker
+  </Card>
+  <Card title="Approval Page" icon="check-to-slot" href="/guides/22-approval-page">
+    Web UI approval forms
+  </Card>
+</CardGroup>

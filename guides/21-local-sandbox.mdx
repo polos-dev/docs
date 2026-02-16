@@ -1,0 +1,160 @@
+---
+title: "21 - Local Sandbox"
+description: "Sandbox tools running on the host machine without Docker"
+---
+
+A coding agent with sandbox tools that run directly on your machine — no Docker required. Since there's no container isolation, exec security defaults to `approval-always` and file operations use `path_restriction` to confine access to the workspace directory.
+
+## Create local sandbox tools
+
+<CodeGroup>
+
+```python Python
+import os
+from polos import (
+    Agent, max_steps, MaxStepsConfig,
+    sandbox_tools, SandboxToolsConfig, LocalEnvironmentConfig,
+)
+
+workspace_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace")
+
+# Create sandbox tools that run locally on the host
+tools = sandbox_tools(
+    SandboxToolsConfig(
+        env="local",
+        local=LocalEnvironmentConfig(
+            cwd=workspace_dir,
+            path_restriction=workspace_dir,  # prevent file access outside workspace
+        ),
+        # Exec defaults to 'approval-always' for local mode.
+        # Write and edit also require approval (file_approval defaults to 'always').
+        # You can override these defaults:
+        #
+        # exec=ExecToolConfig(
+        #     security="allowlist",
+        #     allowlist=["node *", "cat *", "ls *", "ls", "echo *"],
+        # ),
+        # file_approval="none",  # disable write/edit approval
+    )
+)
+```
+
+```typescript TypeScript
+import { defineAgent, maxSteps, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+import path from 'node:path';
+
+const workspaceDir = path.resolve(process.cwd(), 'workspace');
+
+// Create sandbox tools that run locally on the host
+export const tools = sandboxTools({
+  env: 'local',
+  local: {
+    cwd: workspaceDir,
+    pathRestriction: workspaceDir, // prevent file access outside workspace
+  },
+  // Exec defaults to 'approval-always' for local mode.
+  // Write and edit also require approval (fileApproval defaults to 'always').
+  // You can override these defaults:
+  //
+  // exec: {
+  //   security: 'allowlist',
+  //   allowlist: ['node *', 'cat *', 'ls *', 'ls', 'echo *'],
+  // },
+  // fileApproval: 'none',  // disable write/edit approval
+});
+```
+
+</CodeGroup>
+
+## Define the agent
+
+<CodeGroup>
+
+```python Python
+coding_agent = Agent(
+    id="local_coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        f"You are a coding agent with access to the local filesystem. "
+        f"You can create files, edit code, run shell commands, and search the codebase. "
+        f"Your workspace is at {workspace_dir}. "
+        f"Use the tools to complete the task, then summarize what you did and show the output. "
+        f"Always verify your work by running the code after writing it. "
+        f"In your final response, include the actual output from running the code."
+    ),
+    tools=tools,
+    stop_conditions=[max_steps(MaxStepsConfig(count=30))],
+)
+```
+
+```typescript TypeScript
+export const codingAgent = defineAgent({
+  id: 'local_coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt:
+    `You are a coding agent with access to the local filesystem. ` +
+    `You can create files, edit code, run shell commands, and search the codebase. ` +
+    `Your workspace is at ${workspaceDir}. ` +
+    `Use the tools to complete the task, then summarize what you did and show the output. ` +
+    `Always verify your work by running the code after writing it. ` +
+    `In your final response, include the actual output from running the code.`,
+  tools,
+  stopConditions: [maxSteps({ count: 30 })],
+});
+```
+
+</CodeGroup>
+
+## Security model
+
+| Operation | Behavior |
+|---|---|
+| `exec` (shell commands) | Always requires approval |
+| `write`, `edit` (file modifications) | Always requires approval |
+| `read`, `glob`, `grep` within workspace | Runs freely |
+| `read`, `glob`, `grep` outside workspace | Requires approval |
+
+Symlink traversal is blocked when `path_restriction` is set, preventing the agent from escaping the workspace via symlinks.
+
+## Comparison with Docker sandbox
+
+| Feature | Docker (`env: 'docker'`) | Local (`env: 'local'`) |
+|---|---|---|
+| Isolation | Container | None (host machine) |
+| Exec security default | No check (sandbox provides isolation) | `approval-always` |
+| File access | Via bind mount | Direct filesystem |
+| Path restriction | Container boundary | `pathRestriction` config |
+| Requires Docker | Yes | No |
+| Performance | Container overhead | Native speed |
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/21-local-sandbox
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/21-local-sandbox
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
+Every shell command the agent tries to run will pause and ask for your approval in the terminal. File write/edit operations also require approval. Read-only operations run freely within the workspace.
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/21-local-sandbox) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/21-local-sandbox)

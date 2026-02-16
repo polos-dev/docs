@@ -1,0 +1,289 @@
+---
+title: "22 - Approval Page"
+description: "Web UI for workflow approval with suspend/resume"
+---
+
+A deployment workflow that suspends for human approval via a web UI. The suspend event includes `_form` metadata that the Polos UI renders as an interactive form, and an `_approval_url` so the client knows where to send the user.
+
+## Define the workflow
+
+<CodeGroup>
+
+```python Python
+from pydantic import BaseModel
+from polos import workflow, WorkflowContext
+
+
+class DeployRequest(BaseModel):
+    service: str
+    version: str
+    environment: str
+
+
+class DeployResult(BaseModel):
+    service: str
+    version: str
+    environment: str
+    status: str
+    approved_by: str | None = None
+    reason: str | None = None
+
+
+@workflow(id="deploy_with_approval")
+async def deploy_workflow(ctx: WorkflowContext, payload: DeployRequest) -> DeployResult:
+    # Step 1: Run pre-deploy checks
+    checks = await ctx.step.run(
+        "pre_deploy_checks",
+        lambda: {
+            "tests_pass": True,
+            "build_success": True,
+            "service": payload.service,
+            "version": payload.version,
+        },
+    )
+
+    # Step 2: Suspend and wait for human approval via the web UI.
+    # The _form schema tells the approval page what to render.
+    resume_data = await ctx.step.suspend(
+        "approve_deploy",
+        data={
+            "_form": {
+                "title": f"Deploy {payload.service} v{payload.version}",
+                "description": (
+                    f"Approve deployment to {payload.environment}. "
+                    "All pre-deploy checks passed."
+                ),
+                "fields": [
+                    {
+                        "name": "approved",
+                        "type": "boolean",
+                        "label": "Approve this deployment",
+                        "default": False,
+                    },
+                    {
+                        "name": "approver",
+                        "type": "text",
+                        "label": "Your name",
+                        "required": True,
+                    },
+                    {
+                        "name": "reason",
+                        "type": "textarea",
+                        "label": "Comments",
+                        "description": "Optional reason or notes for this decision",
+                    },
+                ],
+                "context": {
+                    "service": payload.service,
+                    "version": payload.version,
+                    "environment": payload.environment,
+                    "tests": "passing" if checks["tests_pass"] else "failing",
+                    "build": "success" if checks["build_success"] else "failed",
+                },
+            },
+        },
+        timeout=86400,  # 24 hour timeout
+    )
+
+    # Step 3: Process the decision
+    decision = resume_data.get("data", resume_data) if isinstance(resume_data, dict) else {}
+    approved = bool(decision.get("approved"))
+    approved_by = str(decision.get("approver", "unknown"))
+    reason = str(decision["reason"]) if decision.get("reason") is not None else None
+
+    if approved:
+        await ctx.step.run("execute_deploy", lambda: {"deployed": True})
+
+    return DeployResult(
+        service=payload.service,
+        version=payload.version,
+        environment=payload.environment,
+        status="deployed" if approved else "rejected",
+        approved_by=approved_by,
+        reason=reason,
+    )
+```
+
+```typescript TypeScript
+import { defineWorkflow } from '@polos/sdk';
+
+interface DeployRequest {
+  service: string;
+  version: string;
+  environment: string;
+}
+
+interface DeployResult {
+  service: string;
+  version: string;
+  environment: string;
+  status: string;
+  approvedBy?: string;
+  reason?: string;
+}
+
+export const deployWorkflow = defineWorkflow<DeployRequest, unknown, DeployResult>(
+  { id: 'deploy_with_approval' },
+  async (ctx, payload) => {
+    // Step 1: Run pre-deploy checks
+    const checks = await ctx.step.run('pre_deploy_checks', () => ({
+      testsPass: true,
+      buildSuccess: true,
+      service: payload.service,
+      version: payload.version,
+    }));
+
+    // Step 2: Suspend and wait for human approval via the web UI.
+    // The _form schema tells the approval page what to render.
+    const resumeData = await ctx.step.suspend<Record<string, unknown>, Record<string, unknown>>(
+      'approve_deploy',
+      {
+        data: {
+          _form: {
+            title: `Deploy ${payload.service} v${payload.version}`,
+            description: `Approve deployment to ${payload.environment}. All pre-deploy checks passed.`,
+            fields: [
+              { name: 'approved', type: 'boolean', label: 'Approve this deployment', default: false },
+              { name: 'approver', type: 'text', label: 'Your name', required: true },
+              { name: 'reason', type: 'textarea', label: 'Comments', description: 'Optional reason or notes' },
+            ],
+            context: {
+              service: payload.service,
+              version: payload.version,
+              environment: payload.environment,
+              tests: checks.testsPass ? 'passing' : 'failing',
+              build: checks.buildSuccess ? 'success' : 'failed',
+            },
+          },
+        },
+        timeout: 86400, // 24 hour timeout
+      },
+    );
+
+    // Step 3: Process the decision
+    const decision = (resumeData?.['data'] ?? resumeData) as Record<string, unknown>;
+    const approved = Boolean(decision['approved']);
+    const approvedBy = String(decision['approver'] ?? 'unknown');
+    const reason = decision['reason'] != null ? String(decision['reason']) : undefined;
+
+    if (approved) {
+      await ctx.step.run('execute_deploy', () => ({ deployed: true }));
+    }
+
+    return {
+      service: payload.service,
+      version: payload.version,
+      environment: payload.environment,
+      status: approved ? 'deployed' : 'rejected',
+      approvedBy,
+      reason,
+    };
+  },
+);
+```
+
+</CodeGroup>
+
+## Invoke and wait for approval
+
+The client starts the workflow and streams events. When the workflow suspends, the client prints an approval URL for the user to open in their browser.
+
+<CodeGroup>
+
+```python Python
+handle = await deploy_workflow.invoke(
+    client,
+    {"service": "api-gateway", "version": "2.4.0", "environment": "production"},
+)
+
+async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+    if event.event_type and event.event_type.startswith("suspend_"):
+        data = event.data if isinstance(event.data, dict) else {}
+        approval_url = data.get("_approval_url")
+        step_key = event.event_type[len("suspend_"):]
+
+        ui_base_url = os.getenv("POLOS_UI_URL", "http://localhost:5173")
+        display_url = approval_url.replace(api_url, ui_base_url) if approval_url else \
+            f"{ui_base_url}/approve/{handle.id}/{step_key}"
+
+        print(f"  Open this URL in your browser:\n  {display_url}")
+        print("  Fill in the form and click Submit.")
+```
+
+```typescript TypeScript
+const handle = await client.invoke(deployWorkflow.id, {
+  service: 'api-gateway',
+  version: '2.4.0',
+  environment: 'production',
+});
+
+for await (const event of client.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
+  if (event.eventType?.startsWith('suspend_')) {
+    const data = event.data as Record<string, unknown>;
+    const approvalUrl = data['_approval_url'] as string | undefined;
+    const stepKey = event.eventType.slice('suspend_'.length);
+
+    const uiBaseUrl = process.env['POLOS_UI_URL'] ?? 'http://localhost:5173';
+    const displayUrl = approvalUrl
+      ? approvalUrl.replace(apiUrl, uiBaseUrl)
+      : `${uiBaseUrl}/approve/${handle.id}/${stepKey}`;
+
+    console.log(`  Open this URL in your browser:\n  ${displayUrl}`);
+    console.log('  Fill in the form and click Submit.');
+  }
+}
+```
+
+</CodeGroup>
+
+## The `_form` schema
+
+The `_form` object in the suspend data tells the Polos UI what to render:
+
+| Field | Description |
+|---|---|
+| `title` | Heading displayed on the approval page |
+| `description` | Explanatory text below the heading |
+| `fields` | Array of form fields (`boolean`, `text`, `textarea`, `select`) |
+| `context` | Read-only metadata displayed alongside the form |
+
+When the user submits the form, the values are sent back as the resume data and the workflow continues.
+
+## Flow summary
+
+1. Workflow runs pre-deploy checks
+2. Workflow suspends with `_form` metadata and a 24-hour timeout
+3. Client prints the approval URL
+4. User opens the URL, fills in the form, and clicks Submit
+5. Workflow resumes with the submitted data
+6. If approved, the deployment executes; if rejected, the workflow returns a rejected status
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/22-approval-page
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/22-approval-page
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
+When the workflow suspends, open the printed URL in your browser to see the approval form. Fill it in and submit — the workflow resumes automatically.
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/22-approval-page) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/22-approval-page)

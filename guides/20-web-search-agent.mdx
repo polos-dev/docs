@@ -1,0 +1,129 @@
+---
+title: "20 - Web Search Agent"
+description: "Research agent with Tavily web search"
+---
+
+A research agent that searches the web using the [Tavily](https://tavily.com/) API and asks users follow-up questions to refine its research. Combines `createWebSearchTool` with `createAskUserTool` for interactive, source-cited research.
+
+## Create the tools
+
+<CodeGroup>
+
+```python Python
+from polos import (
+    Agent, max_steps, MaxStepsConfig,
+    create_web_search_tool, WebSearchToolConfig,
+    create_ask_user_tool,
+)
+
+# Web search tool -- uses Tavily API via TAVILY_API_KEY env var.
+# The API key is resolved lazily at call time, not at import time.
+web_search = create_web_search_tool(
+    WebSearchToolConfig(
+        max_results=5,
+        search_depth="basic",
+        include_answer=True,
+        approval="always",
+    )
+)
+
+# Ask-user tool -- lets the agent ask the user for clarification
+ask_user = create_ask_user_tool()
+```
+
+```typescript TypeScript
+import { defineAgent, maxSteps, createWebSearchTool, createAskUserTool } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+// Web search tool — uses Tavily API via TAVILY_API_KEY env var.
+// The API key is resolved lazily at call time, not at import time.
+export const webSearch = createWebSearchTool({
+  maxResults: 5,
+  searchDepth: 'basic',
+  includeAnswer: true,
+  approval: 'always',
+});
+
+// Ask-user tool — lets the agent ask the user for clarification
+export const askUser = createAskUserTool();
+```
+
+</CodeGroup>
+
+## Define the agent
+
+<CodeGroup>
+
+```python Python
+research_agent = Agent(
+    id="research_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        "You are a research assistant with access to web search. "
+        "When the user asks a question, search the web for current information and "
+        "synthesize a well-sourced answer. Include URLs from your search results as references. "
+        "If the user's question is ambiguous, use the ask_user tool to clarify before searching. "
+        "You may perform multiple searches to gather comprehensive information. "
+        "Always cite your sources with URLs in the final answer."
+    ),
+    tools=[web_search, ask_user],
+    stop_conditions=[max_steps(MaxStepsConfig(count=30))],
+)
+```
+
+```typescript TypeScript
+export const researchAgent = defineAgent({
+  id: 'research_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt:
+    'You are a research assistant with access to web search. ' +
+    'When the user asks a question, search the web for current information and ' +
+    'synthesize a well-sourced answer. Include URLs from your search results as references. ' +
+    'If the user\'s question is ambiguous, use the ask_user tool to clarify before searching. ' +
+    'You may perform multiple searches to gather comprehensive information. ' +
+    'Always cite your sources with URLs in the final answer.',
+  tools: [webSearch, askUser],
+  stopConditions: [maxSteps({ count: 30 })],
+});
+```
+
+</CodeGroup>
+
+## How it works
+
+1. The agent receives a research question
+2. If the question is ambiguous, it uses `ask_user` to clarify — the workflow suspends until the user responds
+3. The agent searches the web with `web_search` (each search suspends for approval when `approval: "always"` is set)
+4. It may perform multiple searches to gather comprehensive information
+5. The final answer includes source URLs from the search results
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/20-web-search-agent
+cp .env.example .env
+uv sync
+python worker.py      # Terminal 1
+python main.py        # Terminal 2
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/20-web-search-agent
+cp .env.example .env
+npm install
+npx tsx worker.ts      # Terminal 1
+npx tsx main.ts        # Terminal 2
+```
+
+</CodeGroup>
+
+<Note>Requires a [Tavily API key](https://tavily.com/) set as `TAVILY_API_KEY` in your `.env` file.</Note>
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/20-web-search-agent) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/20-web-search-agent)

@@ -205,6 +205,65 @@ export const processOrder = defineTool(
 
 </CodeGroup>
 
+## Tool approval
+
+Tools can require human approval before executing. When a tool has `approval="always"`, Polos suspends the workflow before running the tool, presents an approval form to the user, and only proceeds if the user approves. If the user rejects, the agent receives an error with optional feedback and can adjust its approach.
+
+<CodeGroup>
+
+```python Python
+@tool(description="Send an email", approval="always")
+async def send_email(ctx: WorkflowContext, input: EmailInput) -> EmailOutput:
+    await email_service.send(to=input.to, subject=input.subject, body=input.body)
+    return EmailOutput(status="sent")
+```
+
+```typescript TypeScript
+export const sendEmail = defineTool(
+  {
+    id: 'send_email',
+    description: 'Send an email',
+    inputSchema: emailInputSchema,
+    outputSchema: emailOutputSchema,
+    approval: 'always',
+  },
+  async (_ctx, input) => {
+    await emailService.send({ to: input.to, subject: input.subject, body: input.body });
+    return { status: 'sent' };
+  },
+);
+```
+
+</CodeGroup>
+
+### Approval values
+
+| Value | Behavior |
+|---|---|
+| `"always"` | Suspends before every call. The user sees the tool name, input, and can approve or reject with feedback. |
+| `"none"` | No approval required. The tool runs immediately. |
+| Not set (default) | Same as `"none"` - no approval required. |
+
+### What happens during approval
+
+When a tool with `approval="always"` is called:
+
+1. The workflow **suspends** with a `_form` containing the tool name and input
+2. The user is prompted to **approve or reject** the call
+3. If **approved**, the tool executes normally
+4. If **rejected**, the agent receives an error: `Tool "send_email" was rejected by the user.` with any feedback the user provided
+5. The agent can read the feedback and try a different approach
+
+### Sandbox tool approval
+
+[Sandbox tools](/agents/sandbox) have additional approval mechanisms beyond the `approval` parameter:
+
+- **Exec security** controls command execution via `security` mode (`"approval-always"`, `"allowlist"`, or `"allow-always"`). See [Exec Security](/guides/19-exec-security).
+- **File approval** controls write/edit operations via `file_approval` / `fileApproval` (`"always"` or `"none"`). Defaults to `"always"` in local mode.
+- **Path restriction** controls read-only tools (read, glob, grep) accessing files outside the workspace - these suspend for approval automatically.
+
+See [Sandbox Tools](/guides/18-sandbox-tools) and [Local Sandbox](/guides/21-local-sandbox) for details.
+
 ## Error handling
 
 When tools encounter errors, the agent feeds the error back to the LLM so it can correct mistakes or try alternative approaches.
@@ -577,3 +636,4 @@ If this tool crashes after downloading but before transforming:
 - **Use Pydantic models for input and output**
 - **Errors are feedback** - Tools return errors to the LLM, which can correct and retry
 - **Write clear descriptions** - Help the LLM understand when and how to use tools
+- **Use `approval="always"` for sensitive operations** - Require human approval before execution

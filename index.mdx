@@ -1,263 +1,190 @@
 ---
 title: "Welcome to Polos"
-description: "Durable execution platform for AI agents"
+description: "Open source runtime for agents that do real work"
 ---
 
 # Introduction
 
-Polos is a **durable execution platform** for AI agents.
-It provides the stateful infrastructure required to run long-running, autonomous agents reliably at scale -
-including a built-in event system for agent coordination, so you don't need to bolt on Kafka or RabbitMQ.
+AI agents break the rules of traditional software.
 
-Write it all in plain Python or TypeScript.
-No DAGs to define, no graph syntax to learn. Use loops, conditionals, and function calls
-naturally while Polos handles durability, reliability and scaling automatically.
+They're **async by nature** - running while you sleep, but still needing you to approve, confirm, or provide credentials.
+
+They're **autonomous by design** - you say "fix the bug" and they write code, run commands, delete files. That power is the point. And the risk.
+
+Most frameworks ignore this. Polos gives you sandboxed execution with built-in tools (shell, file system, web search),
+approval flows that reach you on Slack and Discord, and durable workflows that retry on failure and resume from where they left off.
+**Everything you need to build agents that do real work - out of the box.**
+
+Write it all in plain Python or TypeScript - no DAGs to define, no graph syntax to learn.
 
 <CodeGroup>
 
 ```python Python
-from polos import Agent, workflow, WorkflowContext
+from polos import Agent, sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig
 
-order_validation_agent = Agent(
-    provider="openai",
-    model="gpt-4o",
-    tools=[check_inventory, calculate_shipping]
+# Create a sandboxed environment — agents get exec, read, write,
+# edit, glob, and grep tools automatically.
+sandbox = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    docker=DockerEnvironmentConfig(
+        image="node:20-slim",
+        workspace_dir="./workspace",
+        memory="2g",
+    ),
+))
+
+# Give the agent sandbox tools — it can now run commands,
+# read/write files, and explore the codebase autonomously.
+coding_agent = Agent(
+    id="coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt="You are a coding assistant. The repo is at /workspace.",
+    tools=sandbox,  # exec, read, write, edit, glob, grep
 )
-
-@workflow(trigger_on_event="order/new")
-async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
-    # Agent validates order and checks inventory
-    validation = await ctx.step.agent_invoke_and_wait(
-        "validate_order",
-        order_validation_agent.with_input(f"Validate this order: {order}")
-    )
-
-    if not validation.result.valid:
-        return ProcessOrderOutput(
-            status="invalid",
-            reason=validation.result.reason
-        )
-
-    # High-value orders need approval
-    if order.amount > 1000:
-        # Suspend execution until the order is approved or rejected
-        resume_data = await ctx.step.suspend(
-            "approval",
-            data={
-                "id": order.id,
-                "amount": order.amount,
-                "items": order.items,
-                "user": order.user
-            }
-        )
-        decision = resume_data.get("data", {})
-        if not decision.get("approved"):
-            return ProcessOrderOutput(
-                status="rejected",
-                reason=decision.get("reason")
-            )
-
-    # Charge customer (exactly-once guarantee)
-    payment = await ctx.step.run("charge", charge_stripe, order)
-
-    # Wait for warehouse pickup (could be hours or days)
-    await ctx.step.wait_for_event(
-        "wait_pickup",
-        topic=f"warehouse.pickup/{order.id}"
-    )
-
-    # Send shipping notification
-    await ctx.step.run("notify", send_shipping_email, order)
-
-    return ProcessOrderOutput(status="completed", payment_id=payment.id)
 ```
 
 ```typescript TypeScript
-import { defineAgent, defineWorkflow } from '@polos/sdk';
-import { openai } from '@ai-sdk/openai';
+import { defineAgent, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
 
-const orderValidationAgent = defineAgent({
-  id: 'order_validation_agent',
-  model: openai('gpt-4o'),
-  tools: [checkInventory, calculateShipping],
+// Create a sandboxed environment — agents get exec, read, write,
+// edit, glob, and grep tools automatically.
+const sandbox = sandboxTools({
+  env: 'docker',
+  docker: {
+    image: 'node:20-slim',
+    workspaceDir: './workspace',
+    memory: '2g',
+  },
 });
 
-const processOrder = defineWorkflow<ProcessOrderInput, unknown, ProcessOrderOutput>(
-  { id: 'process_order', triggerOnEvent: 'order/new' },
-  async (ctx, order) => {
-    // Agent validates order and checks inventory
-    const validation = await ctx.step.agentInvokeAndWait(
-      'validate_order',
-      orderValidationAgent.withInput(`Validate this order: ${JSON.stringify(order)}`),
-    );
-
-    if (!validation.result.valid) {
-      return { status: 'invalid', reason: validation.result.reason };
-    }
-
-    // High-value orders need approval
-    if (order.amount > 1000) {
-      // Suspend execution until the order is approved or rejected
-      const resumeData = await ctx.step.suspend('approval', {
-        data: {
-          id: order.id,
-          amount: order.amount,
-          items: order.items,
-          user: order.user,
-        },
-      });
-      const decision = (resumeData?.['data'] as Record<string, unknown>) ?? {};
-      if (!decision['approved']) {
-        return { status: 'rejected', reason: decision['reason'] as string };
-      }
-    }
-
-    // Charge customer (exactly-once guarantee)
-    const payment = await ctx.step.run('charge', () => chargeStripe(order));
-
-    // Wait for warehouse pickup (could be hours or days)
-    await ctx.step.waitForEvent('wait_pickup', {
-      topic: `warehouse.pickup/${order.id}`,
-    });
-
-    // Send shipping notification
-    await ctx.step.run('notify', () => sendShippingEmail(order));
-
-    return { status: 'completed', paymentId: payment.id };
-  },
-);
+// Give the agent sandbox tools — it can now run commands,
+// read/write files, and explore the codebase autonomously.
+const codingAgent = defineAgent({
+  id: 'coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt: 'You are a coding assistant. The repo is at /workspace.',
+  tools: [...sandbox], // exec, read, write, edit, glob, grep
+});
 ```
 
 </CodeGroup>
 
-This workflow survives crashes, resumes mid-execution, and pauses for approval - all with zero manual checkpointing, retry logic or queue management.
+## What You Get With Polos
+
+<CardGroup cols={1}>
+  <Card title="Secure Sandbox" icon="shield-halved" href="/agents/sandbox">
+    Agents run in isolated environments - Docker, E2B, or local with path restrictions. Built-in tools for shell, file system, and web search. Full power. Zero risk to your systems.
+  </Card>
+  <Card title="Agents That Reach You" icon="bell" href="/agents/human-in-the-loop">
+    Agents reach you - not the other way around. Stripe-like approval pages that collect input, not just yes/no. Slack, Discord, email. You're at dinner. Phone buzzes. One tap. Done.
+  </Card>
+  <Card title="Durable Execution" icon="rotate-right" href="/fundamentals/durable-execution">
+    State persists - agents resume exactly where they left off. Automatic retries on failure. 60-80% cost savings via prompt caching. Concurrency control across multiple agents.
+  </Card>
+</CardGroup>
 
 ## The Problem
 
-Most AI agents work in demos but break in production. They're long-running distributed systems, yet we run them on infrastructure built for stateless APIs.
+AI agents are long-running distributed systems. But we keep building them on infrastructure designed for stateless request/response APIs. The result: agents that work in demos and break in production.
 
-What breaks:
+**Your agent charges a customer, then waits 24 hours for fraud review.** The server restarts. Did the charge go through? Will it run again? You don't know - because nothing was checkpointed.
 
-- Server restarts lose all progress
-- Failed API calls restart from scratch, wasting tokens
-- Difficult to pause for human approval
-- Multi-agent systems can't share context reliably
-- One workflow can exhaust your entire OpenAI quota
+**Your agent calls GPT-4 fifty times** while researching a topic. On call forty-seven, the API returns a 500. The entire run restarts from scratch. You pay for all fifty calls again.
+
+**You want to give your agent the power to write code, run shell commands, and modify files.** But without a sandbox and guardrails, one bad `rm -rf` loses everything. You need isolated environments with guardrails on what the agent can execute, and explicit approval before anything destructive runs.
+
+**Your agent needs your input** - approval to deploy, a credential, a judgment call. But you're not watching a terminal at 2 AM. You need agents that can reach you wherever you are - Slack, Discord, email - instead of silently blocking until you happen to check. And while they wait for you, they shouldn't be burning compute holding a thread or a container open.
+
+**Your agent hits a rate limit** and retries in a tight loop. Meanwhile, three other agents are doing the same thing. One runaway workflow takes down your entire quota.
 
 ## See It in Action
 
-Imagine a workflow that charges a customer, then pauses for a human fraud review. In most frameworks, a server restart during that 24-hour wait would lose the state - or worse, re-run the charge on reboot. Polos guarantees exactly-once durable execution.
+With just a few lines of code, we built a multi-agent system that fixes GitHub issues automatically.
+Three agents - planner, coder, and tester - share a **Docker sandbox** where they can read files, write code,
+run shell commands, and execute tests using Polos' built-in tools.
+The sandbox keeps your host machine safe while giving agents full power inside the container.
+The workflow suspends for human approval before opening a PR, and every step is durably checkpointed.
 
-<video src="/videos/polos-demo.mp4" controls width="100%"></video>
+<iframe src="https://www.veed.io/embed/7491f507-2b84-4954-b8b1-4ffa69322a91" width="100%" height="450" frameborder="0" title="Polos Demo" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
 
 **Timeline of what's happening:**
 
-1. `charge_stripe` runs → Polos checkpoints the execution result
-2. Workflow suspends for fraud review → Worker resources freed
-3. Worker 1 crashes during the wait
-4. Fraud team approves → Signal sent to orchestrator
-5. Worker 2 resumes on a different machine → Stripe is **not** called again, result replayed from the log guaranteeing exactly-once execution
-6. Confirmation email sent → workflow completes
+1. GitHub issue triggers the workflow via webhook
+2. **Planner agent** uses sandbox tools (`exec`, `read`, `glob`, `grep`) to explore the codebase and produce a fix plan
+3. **Coder agent** uses `write` and `edit` to implement the fix, then `exec` to commit and push - all inside the Docker container
+4. **Tester agent** runs the test suite with `exec`, writes new tests with `write`
+5. Workflow **suspends for human approval** - worker resources freed, you get notified
+6. Reviewer approves → workflow resumes, PR is created, issue is updated
 
-Polos handles failures, rescheduling, and checkpointing. You just focus on business logic.
+Every step is checkpointed. If the worker crashes after the coder finishes, it resumes from the tester - no agents re-run, no LLM calls repeated.
 
-## Logic Belongs in Code, Not Configs
-
-**With Polos:**
-
-<CodeGroup>
-
-```python Python
-@workflow
-async def process_order(ctx: WorkflowContext, order: ProcessOrderInput):
-    # Just write Python
-    if order.amount > 1000:
-        resume_data = await ctx.step.suspend("approval", data=order.model_dump())
-        decision = resume_data.get("data", {})
-        if not decision.get("ok"):
-            return {"status": "rejected"}
-
-    await ctx.step.run("charge", charge_stripe, order)
-    await ctx.step.run("notify", send_email, order)
-```
-
-```typescript TypeScript
-const processOrder = defineWorkflow<ProcessOrderInput, unknown, Record<string, unknown>>(
-  { id: 'process_order' },
-  async (ctx, order) => {
-    // Just write TypeScript
-    if (order.amount > 1000) {
-      const resumeData = await ctx.step.suspend('approval', { data: order });
-      const decision = (resumeData?.['data'] as Record<string, unknown>) ?? {};
-      if (!decision['ok']) {
-        return { status: 'rejected' };
-      }
-    }
-
-    await ctx.step.run('charge', () => chargeStripe(order));
-    await ctx.step.run('notify', () => sendEmail(order));
-  },
-);
-```
-
-</CodeGroup>
-
-**Other platforms:**
-
-```python
-# Define rigid DAGs upfront
-dag = DAG(
-    nodes=[
-        Node("check_amount", CheckAmount),
-        Node("approval", HumanApproval),
-        Node("charge", ChargeStripe),
-        Node("notify", SendEmail),
-    ],
-    edges=[
-        ("check_amount", "approval", condition="amount > 1000"),
-        ("check_amount", "charge", condition="amount <= 1000"),
-        ("approval", "charge", condition="approved"),
-        ("charge", "notify"),
-    ]
-)
-```
-
-With Polos, there are no DAGs to define, no graph syntax to learn. Use loops, conditionals, and function calls naturally while Polos handles durability automatically.
 
 ## Why Polos?
 
-🧠 **Durable State**: Your agent survives crashes with call stack and local variables intact. Step 18 of 20 fails? Resume from step 18. No wasted LLM calls, no manual checkpointing or state-machine hacks required.
+### Secure sandbox
 
-**🚦 Global Concurrency**: System-wide rate limiting with queues and concurrency keys. Prevent one rogue agent from exhausting your entire OpenAI quota. Only active executions count toward limits - queued runs wait their turn without consuming resources.
+Agents need to write code, run shell commands, and modify files - that's what makes them useful.
+But accidently running `rm -rf /` on your host machine isn't an option.
 
-**🤝 Human-in-the-Loop**: Native support for pausing execution. Wait hours or days for user approval and resume with full context. In serverless environments, paused agents consume zero compute - you only pay when they're actively running.
+Polos gives agents a full-power execution environment inside an isolated container.
+A single call to `sandbox_tools()` gives you six built-in tools - `exec`, `read`, `write`, `edit`, `glob`, `grep` -
+that all run inside a Docker container, an E2B cloud sandbox, or a local environment with path restrictions.
 
-**📡 Agent Handoffs**: Transactional memory for multi-agent systems. Pass reasoning history between specialized agents without context drift. Shared working memory enables true agent collaboration.
+You control what agents can do. **Exec security** lets you allowlist safe commands (like `node *` and `ls *`)
+while suspending anything else for your approval. **File approval** requires explicit permission before any write or edit.
+**Path restrictions** prevent agents from reading files outside the workspace. Full power for the agent. Full control for you.
 
-**🔍 Decision-Level Observability**: Trace the reasoning behind every tool call, not just raw logs. See why your agent chose Tool B over Tool A. Debug deterministic failures in stochastic systems.
+### Agents that reach you
 
-**⚡ Production Ready**: Automatic retries, exactly-once execution guarantees, OpenTelemetry tracing built-in. Scales to millions of concurrent workflows.
+Your agents run while you sleep. When they need your input - an approval, a credential, a judgment call -
+they shouldn't block silently until you happen to check a terminal.
+
+Polos **suspends** the workflow and frees all worker resources. No thread held open, no container burning compute.
+The agent reaches you wherever you are - Slack, Discord, email, or a web-based approval page. You review, approve or reject with feedback,
+and the workflow **resumes exactly where it left off**.
+
+Agents can reach you not just for approval but to get any information like reviewing a plan, modifying parameters, add instructions.
+The agent receives your response and continues with full context.
+
+### Durable execution
+
+Every step your agent takes - tool calls, LLM responses, API results - is checkpointed to a durable log.
+If the process crashes, Polos replays the workflow from the log, returning previously-recorded results instead of re-executing them.
+Your agent's exact state is restored in milliseconds.
+
+Polos automatically uses prompt caching, **saving you 60-90% LLM costs**.
+
+**Concurrency control** prevents runaway agents from exhausting your LLM quota.
+System-wide queues and concurrency keys ensure only a set number of executions run at once -
+the rest wait their turn without consuming resources.
+**Automatic retries** with configurable backoff handle transient failures.
+**Exactly-once execution guarantees** mean a Stripe charge runs once, even if the worker crashes and another picks up the work.
+
+Everything is observable. OpenTelemetry tracing is built in - trace the reasoning behind every tool call,
+see why your agent chose one approach over another, and debug failures across multi-agent workflows.
+
+<Note>
+Polos is 100% open source. [Star us on GitHub](https://github.com/polos-dev/polos) if you find it useful, and [join our Discord](https://discord.gg/ZAxHKMPwFG) to connect with the community.
+</Note>
 
 ## What Can You Build?
 
-🔬 **Research assistants**: Multi-hour workflows that search, analyze, and synthesize information across dozens of sources
-
-💰 **Financial operations**: Approval workflows that pause for human review, then execute Stripe charges with exactly-once guarantees
-
-🤖 **Multi-agent systems**: Specialized agents (researcher, writer, editor) that coordinate via shared memory to complete complex tasks
-
-⚙️ **Background automation**: Long-running jobs that survive deploys and resume seamlessly (data migrations, batch processing, ETL pipelines)
-
-## How It Works
-
-Polos captures the result of every side effect - tool calls, API responses, time delays as a durable log.
-If your process dies, Polos replays the workflow from the log, returning previously-recorded results instead of re-executing them.
-Your agent's exact local variables and call stack are restored in milliseconds.
-Completed steps are never re-executed - so you're never paying for the same LLM call twice.
-
-<Note>
-Polos is open source! [⭐ Star us on GitHub](https://github.com/polos-dev/polos) if you find it useful, and [join our Discord](https://discord.gg/ZAxHKMPwFG) to connect with the community.
-</Note>
+<CardGroup cols={2}>
+  <Card title="Coding agents" icon="code" href="/guides/18-sandbox-tools">
+    Agents that clone repos, write code, run tests, and open PRs - all inside a Docker sandbox with human approval before anything ships.
+  </Card>
+  <Card title="Research assistants" icon="magnifying-glass" href="/guides/20-web-search-agent">
+    Multi-hour workflows that search the web, analyze sources, and synthesize findings. Durable execution means they survive restarts without losing progress.
+  </Card>
+  <Card title="Approval workflows" icon="check-to-slot" href="/guides/22-approval-page">
+    Agents that pause for human review - fraud checks, deployment gates, content moderation. Approval pages collect structured input, not just yes/no.
+  </Card>
+  <Card title="Multi-agent systems" icon="robot" href="/guides/14-multi-agent-review">
+    Specialized agents that coordinate via shared memory and hand off work with full context preserved.
+  </Card>
+</CardGroup>
 
 ## Next Steps
 
@@ -267,7 +194,7 @@ Polos is open source! [⭐ Star us on GitHub](https://github.com/polos-dev/polos
     icon="rocket"
     href="/quickstart"
   >
-    Deploy your first durable agent in 5 minutes
+    Build and run a sandboxed coding agent in minutes
   </Card>
   <Card
     title="Core Concepts"

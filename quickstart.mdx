@@ -1,14 +1,17 @@
 ---
 title: "Quickstart"
-description: "Build and run your first durable agent"
+description: "Build and run a sandboxed coding agent"
 icon: "rocket"
 ---
+
+In this guide you'll run a coding agent that can create files, execute shell commands, and search a codebase - all with built-in sandbox restrictions and human approval for every destructive action.
 
 ## Prerequisites
 
 - Python 3.10+ or Node.js 18+
 - Postgres database
-- An [OpenAI API key](https://platform.openai.com/api-keys)
+- An [Anthropic API key](https://console.anthropic.com/)
+- [Node.js 18+](https://nodejs.org/) (the example agent creates and runs JavaScript files)
 
 ## Install Polos
 
@@ -60,23 +63,23 @@ If Polos has already been initialized, update `~/.polos/config.toml` with the ne
 
 ## Clone the example
 
-Clone the weather agent example:
+Clone the local sandbox agent example:
 
 <CodeGroup>
 
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
-cd polos/python-examples/01-agent-with-tools
+cd polos/python-examples/21-local-sandbox
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
-cd polos/typescript-examples/01-agent-with-tools
+cd polos/typescript-examples/21-local-sandbox
 ```
 
 </CodeGroup>
 
-[Python source on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-agent-with-tools) | [TypeScript source on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/01-agent-with-tools)
+[Python source on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/21-local-sandbox) | [TypeScript source on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/21-local-sandbox)
 
 ## Set up your environment
 
@@ -90,10 +93,8 @@ Edit `.env` and fill in your values:
 
 ```bash
 # Required
-POLOS_LOCAL_MODE=true
 POLOS_PROJECT_ID=your-project-id   # The Project ID from `polos-server start`
-POLOS_DEPLOYMENT_ID=agent-with-tools-examples   # Deployment ID for this worker
-OPENAI_API_KEY=sk-...              # Your OpenAI API key
+ANTHROPIC_API_KEY=sk-ant-...       # Your Anthropic API key
 ```
 
 Install dependencies:
@@ -101,7 +102,7 @@ Install dependencies:
 <CodeGroup>
 
 ```bash Python
-pip install polos-sdk[openai] python-dotenv
+pip install polos-sdk[anthropic] python-dotenv
 # Or with uv:
 uv sync
 ```
@@ -114,86 +115,126 @@ npm install
 
 ## Understand the code
 
-The example has three main files:
+The example defines a coding agent with **sandbox tools** that run directly on your machine, then invokes it with a client that handles **approval prompts** when the agent wants to execute commands or write files.
+
+### Agent definition
+
+The agent gets six built-in sandbox tools (`exec`, `read`, `write`, `edit`, `glob`, `grep`) scoped to a workspace directory.
+Since there's no Docker container, destructive operations automatically suspend for your approval.
+To use Docker, see [this example](/guides/18-sandbox-tools) instead.
 
 <Tabs>
   <Tab title="Python">
-    <CodeGroup>
 
 ```python agents.py
-from polos import Agent, max_steps, MaxStepsConfig
-from tools import get_weather
+import os
+from polos import (
+    Agent, max_steps, MaxStepsConfig,
+    sandbox_tools, SandboxToolsConfig, LocalEnvironmentConfig,
+)
 
-# Define an agent with a tool
-weather_agent = Agent(
-    id="weather_agent",
-    provider="openai",
-    model="gpt-4o-mini",
-    system_prompt="You are a helpful weather assistant. Use the get_weather tool to look up weather information when asked.",
-    tools=[get_weather],
-    stop_conditions=[
-        max_steps(MaxStepsConfig(limit=10)),
-    ],
+workspace_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace")
+
+# Create sandbox tools that run locally on the host
+tools = sandbox_tools(
+    SandboxToolsConfig(
+        env="local",
+        local=LocalEnvironmentConfig(
+            cwd=workspace_dir,
+            path_restriction=workspace_dir,  # prevent file access outside workspace
+        ),
+    )
+)
+
+# Define an agent that can write and run code locally
+coding_agent = Agent(
+    id="local_coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        f"You are a coding agent with access to the local filesystem. "
+        f"You can create files, edit code, run shell commands, and search the codebase. "
+        f"Your workspace is at {workspace_dir}. "
+        f"Use the tools to complete the task, then summarize what you did and show the output. "
+        f"Always verify your work by running the code after writing it. "
+        f"In your final response, include the actual output from running the code."
+    ),
+    tools=tools,
+    stop_conditions=[max_steps(MaxStepsConfig(count=30))],
 )
 ```
 
-```python tools.py
-from pydantic import BaseModel
-from polos import tool, WorkflowContext
+  </Tab>
+  <Tab title="TypeScript">
 
-class WeatherInput(BaseModel):
-    city: str
+```typescript agents.ts
+import { defineAgent, maxSteps, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+import path from 'node:path';
 
-class WeatherOutput(BaseModel):
-    city: str
-    temperature: int
-    condition: str
-    humidity: int
-    wind_speed: int
-    unit: str
-    error: str | None = None
+const workspaceDir = path.resolve(process.cwd(), 'workspace');
 
-@tool(description="Get the current weather information for a given city")
-async def get_weather(ctx: WorkflowContext, input: WeatherInput) -> WeatherOutput:
-    # In production, this would call a real weather API
-    weather_data = {
-        "new york": {"city": "New York", "temperature": 72, "condition": "Partly Cloudy", "humidity": 65, "wind_speed": 10, "unit": "F"},
-        "london": {"city": "London", "temperature": 15, "condition": "Rainy", "humidity": 85, "wind_speed": 12, "unit": "C"},
-    }
+// Create sandbox tools that run locally on the host
+export const tools = sandboxTools({
+  env: 'local',
+  local: {
+    cwd: workspaceDir,
+    pathRestriction: workspaceDir, // prevent file access outside workspace
+  },
+});
 
-    city = input.city.strip().lower()
-    weather = weather_data.get(city)
-
-    if not weather:
-        return WeatherOutput(city=city.title(), temperature=0, condition="Unknown", humidity=0, wind_speed=0, unit="C", error=f"Weather data not available for '{city}'.")
-
-    return WeatherOutput(**weather)
+// Define an agent that can write and run code locally
+export const codingAgent = defineAgent({
+  id: 'local_coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt:
+    `You are a coding agent with access to the local filesystem. ` +
+    `You can create files, edit code, run shell commands, and search the codebase. ` +
+    `Your workspace is at ${workspaceDir}. ` +
+    `Use the tools to complete the task, then summarize what you did and show the output. ` +
+    `Always verify your work by running the code after writing it. ` +
+    `In your final response, include the actual output from running the code.`,
+  tools,
+  stopConditions: [maxSteps({ count: 30 })],
+});
 ```
+
+  </Tab>
+</Tabs>
+
+Key things to notice:
+
+- **`env: "local"`** runs tools directly on the host - for container isolation in production, use `"docker"` instead (see [Sandbox Tools](/guides/18-sandbox-tools))
+- **`path_restriction`** / **`pathRestriction`** confines file operations to the workspace directory
+- Exec security defaults to **`approval-always`** for local mode - every shell command suspends for your approval
+- The agent gets six tools automatically: `exec`, `read`, `write`, `edit`, `glob`, `grep`
+
+### Worker
+
+The worker registers the agent and its tools with the orchestrator.
+
+<Tabs>
+  <Tab title="Python">
 
 ```python worker.py
 import asyncio
 import os
 from dotenv import load_dotenv
 from polos import PolosClient, Worker
-from tools import get_weather
-from agents import weather_agent
+from agents import coding_agent, tools
 
 load_dotenv()
 
 async def main():
-    project_id = os.getenv("POLOS_PROJECT_ID")
-
     client = PolosClient(
-        project_id=project_id,
+        project_id=os.getenv("POLOS_PROJECT_ID"),
         api_url=os.getenv("POLOS_API_URL", "http://localhost:8080"),
     )
 
-    # Register agents and tools with the worker
     worker = Worker(
         client=client,
-        deployment_id="python-examples",
-        agents=[weather_agent],
-        tools=[get_weather],
+        agents=[coding_agent],
+        tools=list(tools),
     )
 
     print("Starting worker...")
@@ -203,116 +244,20 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-```python main.py
-import asyncio
-import os
-from dotenv import load_dotenv
-from polos import PolosClient
-from agents import weather_agent
-
-load_dotenv()
-
-async def main():
-    project_id = os.getenv("POLOS_PROJECT_ID")
-
-    client = PolosClient(
-        project_id=project_id,
-        api_url=os.getenv("POLOS_API_URL", "http://localhost:8080"),
-    )
-
-    print("Invoking weather_agent...")
-    result = await weather_agent.run(client, "What's the weather like in New York?")
-    print(result.result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-    </CodeGroup>
   </Tab>
   <Tab title="TypeScript">
-    <CodeGroup>
-
-```typescript agents.ts
-import { defineAgent, maxSteps } from '@polos/sdk';
-import { openai } from '@ai-sdk/openai';
-import { getWeather } from './tools.js';
-
-// Define an agent with a tool
-export const weatherAgent = defineAgent({
-  id: 'weather_agent',
-  model: openai('gpt-4o-mini'),
-  systemPrompt:
-    'You are a helpful weather assistant. Use the get_weather tool to look up weather information when asked.',
-  tools: [getWeather],
-  stopConditions: [maxSteps({ count: 10 })],
-});
-```
-
-```typescript tools.ts
-import { defineTool, type WorkflowContext } from '@polos/sdk';
-import { z } from 'zod';
-
-const weatherInputSchema = z.object({
-  city: z.string(),
-});
-
-const weatherOutputSchema = z.object({
-  city: z.string(),
-  temperature: z.number(),
-  condition: z.string(),
-  humidity: z.number(),
-  wind_speed: z.number(),
-  unit: z.string(),
-  error: z.string().nullable().optional(),
-});
-
-type WeatherInput = z.infer<typeof weatherInputSchema>;
-type WeatherOutput = z.infer<typeof weatherOutputSchema>;
-
-export const getWeather = defineTool(
-  {
-    id: 'get_weather',
-    description: 'Get the current weather information for a given city',
-    inputSchema: weatherInputSchema,
-    outputSchema: weatherOutputSchema,
-  },
-  async (_ctx: WorkflowContext, input: WeatherInput): Promise<WeatherOutput> => {
-    // In production, this would call a real weather API
-    const weatherData: Record<string, WeatherOutput> = {
-      'new york': { city: 'New York', temperature: 72, condition: 'Partly Cloudy', humidity: 65, wind_speed: 10, unit: 'F', error: null },
-      'london': { city: 'London', temperature: 15, condition: 'Rainy', humidity: 85, wind_speed: 12, unit: 'C', error: null },
-    };
-
-    const city = input.city.trim().toLowerCase();
-    const weather = weatherData[city];
-
-    if (!weather) {
-      return { city: city, temperature: 0, condition: 'Unknown', humidity: 0, wind_speed: 0, unit: 'C', error: `Weather data not available for '${city}'.` };
-    }
-
-    return weather;
-  },
-);
-```
 
 ```typescript worker.ts
 import 'dotenv/config';
 import { Worker } from '@polos/sdk';
-import { getWeather } from './tools.js';
-import { weatherAgent } from './agents.js';
+import { codingAgent, tools } from './agents.js';
 
 async function main() {
-  const projectId = process.env['POLOS_PROJECT_ID'];
-  if (!projectId) {
-    throw new Error('POLOS_PROJECT_ID environment variable is required.');
-  }
-
   const worker = new Worker({
     apiUrl: process.env['POLOS_API_URL'] ?? 'http://localhost:8080',
-    projectId,
-    deploymentId: 'typescript-examples',
-    workflows: [weatherAgent, getWeather],
+    projectId: process.env['POLOS_PROJECT_ID']!,
+    deploymentId: 'local-sandbox-examples',
+    workflows: [codingAgent, ...tools],
   });
 
   console.log('Starting worker...');
@@ -322,67 +267,143 @@ async function main() {
 main().catch(console.error);
 ```
 
-```typescript main.ts
-import 'dotenv/config';
-import { PolosClient } from '@polos/sdk';
-import { weatherAgent } from './agents.js';
-
-async function main() {
-  const projectId = process.env['POLOS_PROJECT_ID'];
-  if (!projectId) {
-    throw new Error('POLOS_PROJECT_ID environment variable is required.');
-  }
-
-  const client = new PolosClient({
-    projectId,
-    apiUrl: process.env['POLOS_API_URL'] ?? 'http://localhost:8080',
-  });
-
-  console.log('Invoking weather_agent...');
-  const result = await weatherAgent.run(client, {
-    input: "What's the weather like in New York?",
-  });
-  console.log(result.result);
-}
-
-main().catch(console.error);
-```
-
-    </CodeGroup>
   </Tab>
 </Tabs>
+
+### Client with approval handling
+
+The `main.py` / `main.ts` file invokes the agent and streams workflow events. When the agent wants to run a command or write a file, Polos **suspends** execution and emits a suspend event. The client catches the event, shows you what the agent wants to do, and asks for your approval. When you approve, it **resumes** the agent exactly where it left off.
+
+Here's the core pattern:
+
+<Tabs>
+  <Tab title="Python">
+
+```python main.py (key pattern)
+from polos import PolosClient
+from polos.features import events
+
+# Invoke the agent
+handle = await client.invoke(coding_agent.id, {
+    "input": "Create hello.js that prints 'Hello, world!' and run it.",
+    "streaming": True,
+})
+
+# Stream events - approve each exec/write/edit when the agent suspends
+async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+    if event.event_type and event.event_type.startswith("suspend_"):
+        step_key = event.event_type[len("suspend_"):]
+        form = event.data.get("_form", {})
+        context = form.get("context", {})
+        print(f"\n  Agent wants to: {context.get('command') or context.get('tool', step_key)}")
+        approved = input("  Approve? (y/n): ").strip().lower() == "y"
+        await client.resume(handle.root_workflow_id, handle.id, step_key, {"approved": approved})
+```
+
+  </Tab>
+  <Tab title="TypeScript">
+
+```typescript main.ts (key pattern)
+import { PolosClient } from '@polos/sdk';
+
+// Invoke the agent
+const handle = await client.invoke(codingAgent.id, {
+  input: "Create hello.js that prints 'Hello, world!' and run it.",
+  streaming: true,
+});
+
+// Stream events - approve each exec/write/edit when the agent suspends
+for await (const event of client.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
+  if (event.eventType?.startsWith('suspend_')) {
+    const stepKey = event.eventType.slice('suspend_'.length);
+    const context = (event.data as any)?._form?.context ?? {};
+    console.log(`\n  Agent wants to: ${context.command ?? context.tool ?? stepKey}`);
+    const answer = await rl.question('  Approve? (y/n): ');
+    await client.resume(handle.rootWorkflowId, handle.id, stepKey, {
+      approved: answer.trim().toLowerCase() === 'y',
+    });
+  }
+}
+```
+
+  </Tab>
+</Tabs>
+
+<Tip>The cloned example includes a richer approval UI with detailed previews of commands, file contents, and path access requests. The pattern above shows the core concept.</Tip>
 
 ## Run the agent
 
 **Terminal 1** - Start the worker:
 
-```bash
+<CodeGroup>
+
+```bash Python
 python worker.py
 ```
 
-The worker is an API server that registers your agents and tools with the orchestrator. When an agent is invoked, the orchestrator calls back to this API to execute it.
+```bash TypeScript
+npx tsx worker.ts
+```
+
+</CodeGroup>
 
 You should see:
 
 ```
-Starting worker...
-  Project ID: 046a270d-c253-4914-9d2c-86b8484807ae
-  Agents: ['weather_agent']
+Starting local sandbox worker...
+  Agent: local_coding_agent
+  Tools: [exec, read, write, edit, glob, grep]
+  Environment: local (no Docker)
+  Exec security: approval-always (default for local)
   Press Ctrl+C to stop
 ```
 
 **Terminal 2** - Invoke the agent:
 
-```bash
+<CodeGroup>
+
+```bash Python
 python main.py
 ```
 
-The agent will use the `get_weather` tool to look up the weather and respond:
+```bash TypeScript
+npx tsx main.ts
+```
+
+</CodeGroup>
+
+The agent will start working on the task. Each time it wants to write a file or run a command, you'll see an approval prompt:
 
 ```
-Invoking weather_agent...
-The weather in New York is currently 72°F and Partly Cloudy with 65% humidity and 10 mph winds.
+============================================================
+  WRITE APPROVAL REQUIRED
+============================================================
+
+  The agent wants to use the "write" tool:
+
+    Path: /path/to/workspace/hello.js
+    Content:
+      console.log("Hello from the local sandbox!");
+
+  Approve this operation? (y/n): y
+
+  -> Approved. Resuming...
+
+============================================================
+  COMMAND APPROVAL REQUIRED
+============================================================
+
+  The agent wants to run a command on your machine:
+
+    Command:   node hello.js
+    Directory: /path/to/workspace
+
+  Approve this command? (y/n): y
+
+  -> Approved. Resuming...
 ```
+
+Approve each step and the agent will create the files, run them, and report the results.
 
 ## View in the UI
 
@@ -398,13 +419,14 @@ The graph view visualizes the execution flow, making it easy to see how steps re
 
 ## What just happened?
 
-1. The **worker** started an API server and registered the `weather_agent` with the orchestrator
-2. When you ran `main.py`, it submitted a task to the orchestrator
-3. The orchestrator called back to the worker's API to execute the agent
-4. The agent called the LLM, which decided to use the `get_weather` tool
-5. Polos recorded every step - if the process crashed, it would resume exactly where it left off
+1. The **worker** registered the `local_coding_agent` and its sandbox tools with the orchestrator
+2. The **client** submitted a task - the orchestrator called back to the worker to execute the agent
+3. The agent decided to write a file → Polos **suspended** execution and asked for your approval
+4. You approved → Polos **resumed** execution exactly where it left off
+5. The agent ran the code in a **sandboxed environment** with path restrictions
+6. Every step was **durably checkpointed** - if the process crashed mid-execution, it would resume from the last completed step without re-running the LLM calls you already paid for
 
-This is durable execution: your agent's state survives failures, and completed steps are never re-executed.
+This is Polos in action: **sandboxed execution**, **human-in-the-loop approval**, and **durable state** - all without writing retry logic, state machines, or approval infrastructure yourself.
 
 ## Next steps
 
@@ -413,7 +435,7 @@ This is durable execution: your agent's state survives failures, and completed s
     Understand how Polos handles state and durability
   </Card>
   <Card title="Agents" icon="robot" href="/agents/overview">
-    Learn about tools, streaming, and agent configuration
+    Learn about tools, sandbox, streaming, and more
   </Card>
   <Card title="Workflows" icon="diagram-project" href="/workflows/overview">
     Orchestrate multi-step processes with human-in-the-loop
