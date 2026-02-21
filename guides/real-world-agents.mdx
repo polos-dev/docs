@@ -1,0 +1,69 @@
+---
+title: "Real-World Agents"
+description: "Complete, production-style agents built with Polos"
+icon: "robot"
+---
+
+Full agent implementations that go beyond cookbook recipes. Each example is a complete project you can clone, configure, and run.
+
+All examples are available on [GitHub](https://github.com/polos-dev/polos-examples).
+
+## Coding agent for GitHub issues
+
+A multi-agent system that automatically analyzes GitHub issues and generates code fixes. Two specialized agents - a **planner** and a **coder** - share a Docker sandbox where they can read files, write code, run commands, and execute tests.
+
+**What it does:**
+
+1. Receives a GitHub issue (via CLI or webhook)
+2. **Planner agent** explores the codebase using sandbox tools (`exec`, `read`, `glob`, `grep`) and produces a fix plan
+3. **Coder agent** implements the fix using `write` and `edit`, then commits and pushes inside the Docker container
+4. Workflow **suspends for human approval** - shows the diff, commit log, and files changed
+5. On approval, creates a pull request and comments on the original issue
+
+**Polos features used:**
+
+- **[Sandboxed execution](/agents/sandbox)** - Both agents share a session-scoped Docker container with git credentials, network access, and built-in tools
+- **[Human-in-the-loop](/agents/human-in-the-loop)** - Form-based approval with diff preview, rejection with feedback, 24-hour timeout
+- **[Durable workflows](/fundamentals/durable-execution)** - 10 checkpointed steps. If the process crashes after the coder finishes, it resumes from the approval step - no agents re-run, no LLM calls repeated
+- **[Triggers](/workflows/event-triggered-workflows)** - Can be triggered automatically via `github/issues/opened` events
+
+**Run it:**
+
+```bash
+git clone https://github.com/polos-dev/polos-examples.git
+cd polos-examples/github-issue-fixer
+```
+
+<CodeGroup>
+
+```bash Python
+cd python
+cp .env.example .env
+# Add your ANTHROPIC_API_KEY and GITHUB_TOKEN
+polos dev
+```
+
+```bash TypeScript
+cd typescript
+cp .env.example .env
+# Add your ANTHROPIC_API_KEY and GITHUB_TOKEN
+polos dev
+```
+
+</CodeGroup>
+
+Then trigger it on an issue:
+
+<CodeGroup>
+
+```bash Python
+python main.py owner/repo#123
+```
+
+```bash TypeScript
+npx tsx main.ts owner/repo#123
+```
+
+</CodeGroup>
+
+[Python source on GitHub](https://github.com/polos-dev/polos-examples/tree/main/github-issue-fixer/python) | [TypeScript source on GitHub](https://github.com/polos-dev/polos-examples/tree/main/github-issue-fixer/typescript)

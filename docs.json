@@ -75,28 +75,7 @@
             "group": "Guides and Examples",
             "pages": [
               "guides/cookbook-examples",
-              "guides/01-agent-with-tools",
-              "guides/02-structured-output",
-              "guides/03-agent-streaming",
-              "guides/04-conversational-chat",
-              "guides/05-thinking-agent",
-              "guides/06-guardrails",
-              "guides/07-lifecycle-hooks",
-              "guides/08-workflow-basics",
-              "guides/09-suspend-resume",
-              "guides/10-state-persistence",
-              "guides/11-error-handling",
-              "guides/12-shared-queues",
-              "guides/13-parallel-workflows",
-              "guides/14-multi-agent-review",
-              "guides/15-event-triggered",
-              "guides/16-scheduled-workflows",
-              "guides/17-order-processing",
-              "guides/18-sandbox-tools",
-              "guides/19-exec-security",
-              "guides/20-web-search-agent",
-              "guides/21-local-sandbox",
-              "guides/22-approval-page"
+              "guides/real-world-agents"
             ]
           },
           {
