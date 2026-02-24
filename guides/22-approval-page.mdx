@@ -192,11 +192,11 @@ The client starts the workflow and streams events. When the workflow suspends, t
 
 ```python Python
 handle = await deploy_workflow.invoke(
-    client,
+    polos,
     {"service": "api-gateway", "version": "2.4.0", "environment": "production"},
 )
 
-async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+async for event in events.stream_workflow(polos, handle.root_workflow_id, handle.id):
     if event.event_type and event.event_type.startswith("suspend_"):
         data = event.data if isinstance(event.data, dict) else {}
         approval_url = data.get("_approval_url")
@@ -211,13 +211,13 @@ async for event in events.stream_workflow(client, handle.root_workflow_id, handl
 ```
 
 ```typescript TypeScript
-const handle = await client.invoke(deployWorkflow.id, {
+const handle = await polos.invoke(deployWorkflow.id, {
   service: 'api-gateway',
   version: '2.4.0',
   environment: 'production',
 });
 
-for await (const event of client.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
+for await (const event of polos.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
   if (event.eventType?.startsWith('suspend_')) {
     const data = event.data as Record<string, unknown>;
     const approvalUrl = data['_approval_url'] as string | undefined;
@@ -265,19 +265,17 @@ When the user submits the form, the values are sent back as the resume data and 
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/22-approval-page
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/22-approval-page
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

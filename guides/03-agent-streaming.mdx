@@ -10,7 +10,7 @@ Stream agent responses as they're generated.
 <CodeGroup>
 
 ```python Python
-result = await storyteller.stream(client, "Tell me a story about a robot")
+result = await storyteller.stream(polos, "Tell me a story about a robot")
 
 # Iterate over text chunks as they arrive
 async for chunk in result.text_chunks:
@@ -18,7 +18,7 @@ async for chunk in result.text_chunks:
 ```
 
 ```typescript TypeScript
-const result = await storyteller.stream(client, {
+const result = await storyteller.stream(polos, {
   input: 'Tell me a story about a robot',
 });
 
@@ -35,7 +35,7 @@ for await (const chunk of result.textChunks) {
 <CodeGroup>
 
 ```python Python
-result = await storyteller.stream(client, "Write a haiku")
+result = await storyteller.stream(polos, "Write a haiku")
 
 async for event in result.events:
     if event.event_type == "text_delta":
@@ -48,7 +48,7 @@ async for event in result.events:
 ```
 
 ```typescript TypeScript
-const result = await storyteller.stream(client, {
+const result = await storyteller.stream(polos, {
   input: 'Write a haiku',
 });
 
@@ -75,7 +75,7 @@ for await (const event of result.events) {
 <CodeGroup>
 
 ```python Python
-result = await storyteller.stream(client, "What are benefits of reading?")
+result = await storyteller.stream(polos, "What are benefits of reading?")
 
 # Wait for completion and get accumulated text
 final_text = await result.text()
@@ -83,7 +83,7 @@ print(final_text)
 ```
 
 ```typescript TypeScript
-const result = await storyteller.stream(client, {
+const result = await storyteller.stream(polos, {
   input: 'What are benefits of reading?',
 });
 
@@ -101,19 +101,17 @@ console.log(finalText);
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/03-agent-streaming
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/03-agent-streaming
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

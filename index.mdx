@@ -7,7 +7,7 @@ description: The open-source runtime for AI agents
 
 **Building agents is easy. Running them in production is hard.**
 
-Polos handles sandboxes, durability, approvals, triggers, and observability — so you can focus on writing the agent.
+Polos handles sandboxes, durability, approvals, triggers, and observability - so you can focus on writing the agent.
 No DAGs. No graph syntax. Just Python or TypeScript.
 
 <CodeGroup>
@@ -15,14 +15,14 @@ No DAGs. No graph syntax. Just Python or TypeScript.
 ```python Python
 from polos import Agent, sandbox_tools, SandboxToolsConfig, DockerConfig
 
-# Create a sandboxed environment — agents get exec, read, write,
+# Create a sandboxed environment - agents get exec, read, write,
 # edit, glob, and grep tools automatically.
 sandbox = sandbox_tools(SandboxToolsConfig(
     env="docker",
     docker=DockerConfig(image="node:20-slim", memory="2g"),
 ))
 
-# Give the agent sandbox tools — it can now run commands,
+# Give the agent sandbox tools - it can now run commands,
 # read/write files, and explore the codebase autonomously.
 coding_agent = Agent(
     id="coding_agent",
@@ -37,7 +37,7 @@ coding_agent = Agent(
 import { defineAgent, sandboxTools } from '@polos/sdk';
 import { anthropic } from '@ai-sdk/anthropic';
 
-// Create a sandboxed environment — agents get exec, read, write,
+// Create a sandboxed environment - agents get exec, read, write,
 // edit, glob, and grep tools automatically.
 const sandbox = sandboxTools({
   env: 'docker',
@@ -47,7 +47,7 @@ const sandbox = sandboxTools({
   },
 });
 
-// Give the agent sandbox tools — it can now run commands,
+// Give the agent sandbox tools - it can now run commands,
 // read/write files, and explore the codebase autonomously.
 const codingAgent = defineAgent({
   id: 'coding_agent',
@@ -66,18 +66,20 @@ const codingAgent = defineAgent({
 | **Sandboxing** | None - DIY or run unsandboxed | Docker, E2B + built-in tools (exec, files, search) |
 | **Durability** | Agent crashes, start over | Auto-retry, resume from exact step |
 | **Approvals** | Build it yourself | Slack, UI, terminal - one tap |
+| **Slack** | Build a bot from scratch | [@mention an agent](/agents/slack-integration), get responses in-thread |
 | **Triggers** | Glue code for every webhook | Built-in: HTTP, webhooks, cron, events |
 | **Observability** | Grep through logs | Full tracing, every tool call, every decision |
 | **Cost** | Re-run failed LLM calls from scratch | Durable execution, prompt caching, 60-80% savings |
 
 ## What You Get With Polos
 
-- **[Sandboxed Execution](/agents/sandbox)** — Isolated Docker and E2B environments. Built-in tools: exec, read, write, edit, glob, grep, web_search. No tool code to write, no sandbox lifecycle to manage.
-- **[Human-in-the-Loop](/agents/human-in-the-loop)** — Approval flows for any tool call. Reach your team via Slack, Discord, email. Paused agents consume zero compute.
-- **[Durable Workflows](/fundamentals/durable-execution)** — Auto-retry, log-replay, concurrency control. Resume from the exact step that failed. 60-80% cost savings via prompt caching.
-- **[Triggers](/workflows/event-triggered-workflows)** — Webhook URLs, HTTP API, cron schedules, event-driven. Slack integration with no glue code.
-- **[Observability](/observability/tracing)** — OpenTelemetry tracing for every step, tool call, and approval. Full execution history. Visual dashboard for monitoring and debugging.
-- **Bring Your Stack** — Any LLM via Vercel AI SDK and LiteLLM. CrewAI, LangGraph, and Mastra compatible. Python or TypeScript. Open source - run anywhere.
+- **[Sandboxed Execution](/agents/sandbox)** - Isolated Docker and E2B environments. Built-in tools: exec, read, write, edit, glob, grep, web_search. No tool code to write, no sandbox lifecycle to manage.
+- **[Human-in-the-Loop](/agents/human-in-the-loop)** - Approval flows for any tool call. Reach your team via Slack, Discord, email. Paused agents consume zero compute.
+- **[Durable Workflows](/fundamentals/durable-execution)** - Auto-retry, log-replay, concurrency control. Resume from the exact step that failed. 60-80% cost savings via prompt caching.
+- **[Slack Integration](/agents/slack-integration)** - @mention your bot to trigger any agent. Responses stream back to the thread. Tool approvals show up as Approve/Reject buttons in Slack.
+- **[Triggers](/workflows/event-triggered-workflows)** - Webhook URLs, HTTP API, cron schedules, event-driven.
+- **[Observability](/observability/tracing)** - OpenTelemetry tracing for every step, tool call, and approval. Full execution history. Visual dashboard for monitoring and debugging.
+- **Bring Your Stack** - Any LLM via Vercel AI SDK and LiteLLM. CrewAI, LangGraph, and Mastra compatible. Python or TypeScript. Open source - run anywhere.
 
 ### CLI and UI to monitor and run your agents
 
@@ -101,11 +103,11 @@ Watch a coding agent built with Polos - sandboxed execution, tool approvals, and
 
 ## What Can You Build?
 
-- **[Coding Agent](/guides/18-sandbox-tools)** — Clones repos, writes code, runs tests, and opens PRs — all inside a Docker sandbox with human approval before anything ships.
-- **[Data Analyst](/guides/22-approval-page)** — Connects to data warehouses, executes SQL in sandboxed environments, builds charts, sends approval pages before sharing with stakeholders.
-- **[Research Agent](/guides/20-web-search-agent)** — Crawls multiple sources, extracts findings, builds knowledge bases. Durable execution checkpoints after each source. Notifies via Slack or Discord.
-- **[Order Processing](/guides/17-order-processing)** — Handles incoming orders, runs fraud checks, suspends for human review on flagged transactions. Exactly-once execution guarantees no double charges.
-- **[Scheduled Workflows](/guides/16-scheduled-workflows)** — Cron-triggered agents that run nightly data syncs, generate reports, or clean up stale resources. Durable state means missed runs pick up where they left off.
+- **[Coding Agent](/guides/18-sandbox-tools)** - Clones repos, writes code, runs tests, and opens PRs - all inside a Docker sandbox with human approval before anything ships.
+- **[Data Analyst](/guides/22-approval-page)** - Connects to data warehouses, executes SQL in sandboxed environments, builds charts, sends approval pages before sharing with stakeholders.
+- **[Research Agent](/guides/20-web-search-agent)** - Crawls multiple sources, extracts findings, builds knowledge bases. Durable execution checkpoints after each source. Notifies via Slack or Discord.
+- **[Order Processing](/guides/17-order-processing)** - Handles incoming orders, runs fraud checks, suspends for human review on flagged transactions. Exactly-once execution guarantees no double charges.
+- **[Scheduled Workflows](/guides/16-scheduled-workflows)** - Cron-triggered agents that run nightly data syncs, generate reports, or clean up stale resources. Durable state means missed runs pick up where they left off.
 
 ## Next Steps
 

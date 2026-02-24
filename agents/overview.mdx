@@ -356,6 +356,74 @@ console.log(`Output tokens: ${response.usage.outputTokens}`);
 ```
 </CodeGroup>
 
+## Triggering agents from Slack
+
+You can trigger agents directly from Slack by @mentioning your bot. The agent's output streams back to the originating Slack thread.
+
+```
+@polos @sales-agent What's the latest on Acme?
+```
+
+`@sales-agent` is the ID of the agent you want to trigger. The bot routes the message to the right agent and streams the response back to the same thread.
+
+To set this up, create a Slack app, configure event subscriptions, and register the app with your orchestrator. See [Slack Integration](/agents/slack-integration) for the full setup guide.
+
+## Sandbox tools
+
+Give agents the ability to write code, run shell commands, and explore a codebase inside a controlled environment. A single call to `sandboxTools()` creates six tools (`exec`, `read`, `write`, `edit`, `glob`, `grep`) that share an execution environment.
+
+<CodeGroup>
+```python Python
+from polos import Agent, sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    scope="session",
+    docker=DockerEnvironmentConfig(
+        image="node:20-slim",
+    ),
+))
+
+coding_agent = Agent(
+    id="coding_agent",
+    provider="anthropic",
+    model="claude-opus-4-5",
+    system_prompt="You are a coding assistant.",
+    tools=tools,
+)
+```
+
+```typescript TypeScript
+import { defineAgent, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+const tools = sandboxTools({
+  env: 'docker',
+  scope: 'session',
+  docker: {
+    image: 'node:20-slim',
+  },
+});
+
+const codingAgent = defineAgent({
+  id: 'coding_agent',
+  model: anthropic('claude-opus-4-5'),
+  systemPrompt: 'You are a coding assistant.',
+  tools: [...tools],
+});
+```
+</CodeGroup>
+
+Polos supports three execution environments:
+
+| Environment | Isolation | Best for |
+|---|---|---|
+| `docker` | Container | Production, untrusted code |
+| `local` | None (host machine) | Development, trusted agents |
+| `e2b` (coming soon) | Cloud sandbox | Cloud-native deployments |
+
+The `exec` tool supports security modes to control which commands run without approval: `allow-always` (default for Docker), `allowlist` (pattern-based), and `approval-always` (default for local). See [Sandbox](/agents/sandbox) for the full configuration reference.
+
 ## Agent durability
 
 Agents in Polos are durable - they survive failures and resume from the last completed step.
@@ -473,8 +541,10 @@ This combines agent autonomy with workflow orchestration for complex multi-step 
 **Core features:**
 
 - **[Tools](/agents/tools)** - Give agents the ability to take actions
+- **[Sandbox](/agents/sandbox)** - Isolated execution environments for code and shell commands
 - **[Streaming](/agents/streaming)** - Real-time response streaming
 - **[Structured Outputs](/agents/structured-outputs)** - Extract structured data
+- **[Slack Integration](/agents/slack-integration)** - Trigger agents from Slack
 
 **Advanced patterns:**
 

@@ -82,7 +82,7 @@ const thinkingAgent = defineAgent({
 <CodeGroup>
 
 ```python Python
-result = await thinking_agent.run(client, "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?")
+result = await thinking_agent.run(polos, "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?")
 
 print(f"Problem: {result.result.problem}")
 for i, step in enumerate(result.result.thinking_steps):
@@ -92,7 +92,7 @@ print(f"Confidence: {result.result.confidence}")
 ```
 
 ```typescript TypeScript
-const result = await thinkingAgent.stream(client, {
+const result = await thinkingAgent.stream(polos, {
   input: 'If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?',
 });
 
@@ -110,19 +110,17 @@ for await (const chunk of result.textChunks) {
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/05-thinking-agent
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/05-thinking-agent
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

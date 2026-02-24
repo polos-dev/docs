@@ -96,7 +96,7 @@ const shoppingCartWorkflow = defineWorkflow<CartPayload, ShoppingCartState, Cart
 
 ```python Python
 # Start workflow with initial state
-handle = await client.workflows.invoke(
+handle = await polos.invoke(
     "shopping_cart",
     payload={"action": "add", "item": {...}},
     initial_state={"items": [], "total": 0.0},
@@ -105,7 +105,7 @@ handle = await client.workflows.invoke(
 
 ```typescript TypeScript
 // Start workflow with initial state
-const handle = await client.workflows.invoke(
+const handle = await polos.invoke(
   'shopping_cart',
   { action: 'add', item: { /* ... */ } },
   { initialState: { items: [], total: 0 } },
@@ -121,19 +121,17 @@ const handle = await client.workflows.invoke(
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/10-state-persistence
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/10-state-persistence
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

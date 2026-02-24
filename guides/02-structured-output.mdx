@@ -76,7 +76,7 @@ const movieReviewer = defineAgent({
 <CodeGroup>
 
 ```python Python
-result = await movie_reviewer.run(client, "Review the movie 'The Matrix'")
+result = await movie_reviewer.run(polos, "Review the movie 'The Matrix'")
 
 # result.result is a validated MovieReview instance
 print(result.result.title)   # "The Matrix"
@@ -85,7 +85,7 @@ print(result.result.pros)    # ["Innovative visual effects", ...]
 ```
 
 ```typescript TypeScript
-const result = await movieReviewer.run(client, {
+const result = await movieReviewer.run(polos, {
   input: "Review the movie 'The Matrix'",
 });
 
@@ -104,8 +104,7 @@ git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/02-structured-output
 cp .env.example .env  # Add your POLOS_PROJECT_ID and OPENAI_API_KEY
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
@@ -113,8 +112,7 @@ git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/02-structured-output
 cp .env.example .env  # Add your POLOS_PROJECT_ID and OPENAI_API_KEY
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

@@ -99,19 +99,19 @@ export const codingAgent = defineAgent({
 
 ## Stream activity
 
-The client invokes the agent and streams text deltas and tool calls in real time.
+Invoke the agent and stream text deltas and tool calls in real time.
 
 <CodeGroup>
 
 ```python Python
-from polos import PolosClient
+from polos import Polos
 from polos.features import events
 
-handle = await client.invoke(
+handle = await polos.invoke(
     coding_agent.id, {"input": task, "conversationId": conversation_id, "streaming": True}
 )
 
-async for event in events.stream_workflow(client, handle.root_workflow_id, handle.id):
+async for event in events.stream_workflow(polos, handle.root_workflow_id, handle.id):
     if event.event_type == "text_delta":
         content = event.data.get("content") if isinstance(event.data, dict) else None
         if isinstance(content, str):
@@ -123,11 +123,11 @@ async for event in events.stream_workflow(client, handle.root_workflow_id, handl
 ```
 
 ```typescript TypeScript
-const handle = await client.invoke(
+const handle = await polos.invoke(
   codingAgent.id, { input: task, conversationId, streaming: true }
 );
 
-for await (const event of client.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
+for await (const event of polos.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
   if (event.eventType === 'text_delta') {
     const content = (event.data as Record<string, unknown>)['content'];
     if (typeof content === 'string') {
@@ -158,19 +158,17 @@ for await (const event of client.events.streamWorkflow(handle.rootWorkflowId, ha
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/18-sandbox-tools
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/18-sandbox-tools
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

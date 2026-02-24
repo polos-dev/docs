@@ -41,6 +41,7 @@
               "agents/tools",
               "agents/sandbox",
               "agents/streaming",
+              "agents/slack-integration",
               "agents/structured-outputs",
               "agents/human-in-the-loop",
               "agents/guardrails",

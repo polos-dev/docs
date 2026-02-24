@@ -1,0 +1,229 @@
+---
+title: "Slack Integration"
+description: "Send agent notifications to Slack and trigger agents from Slack."
+icon: "slack"
+---
+
+Polos has a built-in Slack integration that posts rich notifications to Slack when agents suspend for approval or user input. You can also trigger agents directly from Slack by @mentioning your bot.
+
+## Prerequisites
+
+- A Polos project with a running orchestrator
+- Admin access to a Slack workspace
+
+## Step 1: Create a Slack App
+
+<Steps>
+  <Step title="Create the app">
+    Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App** > **From scratch**. Name it (e.g., "polos") and select your workspace.
+  </Step>
+  <Step title="Add bot token scopes">
+    Go to **OAuth & Permissions** > **Bot Token Scopes** and add:
+    - `chat:write` - Send messages
+    - `app_mentions:read` - Receive @mentions
+    - `channels:history` - Read channel messages
+    - `groups:history` - Read messages from private channels
+  </Step>
+  <Step title="Install to workspace">
+    Click **Install to Workspace** and authorize. Copy the **Bot User OAuth Token** (`xoxb-...`) - this is your `SLACK_BOT_TOKEN`.
+  </Step>
+  <Step title="Invite the bot to your channel">
+    In your target Slack channel, type `/invite @polos` (or whatever you named the bot).
+  </Step>
+</Steps>
+
+<Note>
+One Slack app serves all your agents. Different agents route to different Slack channels via configuration, not separate apps. You only need a second app if your agents span multiple Slack workspaces.
+</Note>
+
+## Step 2: Configure environment variables
+
+The Slack credentials are split between the orchestrator and the worker.
+
+**Orchestrator** — add to `~/.polos/.env`:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_SIGNING_SECRET=your-signing-secret
+```
+
+**Worker** — add to your project's `.env`:
+
+```bash
+POLOS_PROJECT_ID=your-project-id
+POLOS_API_URL=http://localhost:8080
+POLOS_API_KEY=your-api-key
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+```
+
+## Step 3: Add SlackChannel to your worker
+
+Pass a `SlackChannel` to your Polos instance:
+
+<CodeGroup>
+```typescript TypeScript
+import 'dotenv/config';
+import { Polos, SlackChannel, defineAgent } from '@polos/sdk';
+
+const slack = new SlackChannel({
+  botToken: process.env.SLACK_BOT_TOKEN!
+});
+
+const agent = defineAgent({
+  id: 'my-agent',
+  model: 'anthropic:claude-sonnet-4-20250514',
+  systemPrompt: 'You are a helpful assistant.',
+});
+
+const polos = new Polos({
+  deploymentId: 'slack-example',
+  channels: [slack],
+});
+
+await polos.serve();
+```
+
+```python Python
+import os
+from dotenv import load_dotenv
+from polos import Polos, Agent
+from polos.channels.slack import SlackChannel, SlackChannelConfig
+
+load_dotenv()
+
+slack = SlackChannel(SlackChannelConfig(
+    bot_token=os.environ["SLACK_BOT_TOKEN"]
+))
+
+agent = Agent(
+    id="my-agent",
+    provider="anthropic",
+    model="claude-sonnet-4-20250514",
+    system_prompt="You are a helpful assistant.",
+)
+
+polos = Polos(deployment_id="slack-example", channels=[slack])
+await polos.serve()
+```
+</CodeGroup>
+
+When any agent suspends (via tool approval, or `ctx.step.suspend()`),
+an approval message is posted to the slack channel from where the request originated or
+the slack channel configured for the tool approval.
+
+## Trigger agents from Slack
+
+You can @mention your bot in Slack to trigger an agent. The agent's output streams back to the originating Slack thread.
+
+### Set up event subscriptions
+
+<Steps>
+  <Step title="Enable events">
+    In your Slack app settings, go to **Event Subscriptions** and enable events.
+  </Step>
+  <Step title="Set the request URL">
+    Set the Request URL to:
+    ```
+    https://<your-orchestrator-host>/slack/v1/events
+    ```
+  </Step>
+  <Step title="Subscribe to bot events">
+    Add `app_mention`.
+  </Step>
+</Steps>
+
+### Register your Slack app with the orchestrator
+
+Link your Slack app to your Polos project so the orchestrator knows how to route incoming messages:
+
+```bash
+curl -X POST https://<your-orchestrator-host>/api/v1/slack/apps \
+  -H "Content-Type: application/json" \
+  -H "X-Project-ID: <your-project-id>" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -d '{"api_app_id": "<your-slack-app-id>"}'
+```
+
+You can find your Slack App ID on your app's **Basic Information** page.
+
+### Interact with the bot
+
+Once configured, @mention the bot in any channel it's been invited to:
+
+```
+@polos @assistant_agent Send an email to alice@example.com about the Q1 report
+```
+
+`@assistant_agent` is the name of the agent in Polos that you're triggering from Slack.
+The agent streams output back to the same Slack thread. If the agent suspends (e.g., for tool approval),
+you'll see the Slack message in the thread to approve/reject the request.
+
+## Environment variables
+
+| Variable | Where | Required | Description |
+|---|---|---|---|
+| `SLACK_BOT_TOKEN` | Orchestrator (`~/.polos/.env`) and Worker (`.env`) | Yes | Bot User OAuth Token (`xoxb-...`) from your Slack app |
+| `SLACK_SIGNING_SECRET` | Orchestrator (`~/.polos/.env`) | Yes | Signing Secret from your Slack app's Basic Information page |
+
+## Per-tool channel routing
+
+You might need admin approvals for specific tools irrespective of who triggered the agent.
+In such cases, you can route specific tool approvals to different Slack channels.
+For example, send authorize_payment to `#ops-approvals`:
+
+<CodeGroup>
+```typescript TypeScript
+import { SlackChannel, defineTool } from '@polos/sdk';
+import { z } from 'zod';
+
+const slack = (channel: string) =>
+  new SlackChannel({
+    botToken: process.env.SLACK_BOT_TOKEN!,
+    defaultChannel: channel,
+  });
+
+const authorizePaymentTool = defineTool(
+  {
+    id: 'authorize_payment',
+    description: 'Authorize payment to a recipient.',
+    inputSchema: z.object({
+      subject: z.string(),
+      amount: z.number(),
+      details: z.string(),
+    }),
+    approval: 'always',
+    channels: [slack('#ops-approvals')], // Override: approvals go here
+  },
+  async (input) => {
+    return { subject: input.subject, amount: input.amount };
+  },
+);
+```
+
+```python Python
+from polos import Tool
+from polos.channels.slack import SlackChannel, SlackChannelConfig
+from pydantic import BaseModel
+
+def slack(channel: str) -> SlackChannel:
+    return SlackChannel(SlackChannelConfig(
+        bot_token=os.environ["SLACK_BOT_TOKEN"],
+        default_channel=channel,
+    ))
+
+class AuthorizePaymentInput(BaseModel):
+    subject: str
+    amount: float
+    details: str
+
+authorize_payment_tool = Tool(
+    id="authorize_payment",
+    description="Authorize payment to a recipient.",
+    input_schema=AuthorizePaymentInput,
+    approval="always",
+    channels=[slack("#ops-approvals")],  # Override: approvals go here
+)
+```
+</CodeGroup>
+
+The channel set on a tool takes precedence over the worker-level channel. If a tool has no channels configured, it inherits from the worker.

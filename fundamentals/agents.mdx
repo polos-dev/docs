@@ -265,6 +265,60 @@ The LLM sees each tool's description and function signature, then decides when t
 
 Tools are durable (under the hood, they are workflows) - if an agent crashes after calling a tool, the tool result is cached. On resume, the agent doesn't re-execute the tool; it uses the cached result.
 
+## Sandbox tools
+
+Give agents the ability to write code, run shell commands, and explore a codebase inside an isolated environment. A single `sandboxTools()` call creates six tools (`exec`, `read`, `write`, `edit`, `glob`, `grep`):
+
+<CodeGroup>
+```python
+from polos import Agent, sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig
+
+tools = sandbox_tools(SandboxToolsConfig(
+    env="docker",
+    scope="session",
+    docker=DockerEnvironmentConfig(image="node:20-slim"),
+))
+
+coding_agent = Agent(
+    id="coding_agent",
+    provider="anthropic",
+    model="claude-opus-4-5",
+    system_prompt="You are a coding assistant.",
+    tools=tools,
+)
+```
+
+```typescript
+import { defineAgent, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+const tools = sandboxTools({
+  env: 'docker',
+  scope: 'session',
+  docker: { image: 'node:20-slim' },
+});
+
+const codingAgent = defineAgent({
+  id: 'coding_agent',
+  model: anthropic('claude-opus-4-5'),
+  systemPrompt: 'You are a coding assistant.',
+  tools: [...tools],
+});
+```
+</CodeGroup>
+
+Use `env: 'docker'` for isolated container execution, or `env: 'local'` to run directly on the host (with approval-based security by default). See [Sandbox](/agents/sandbox) for the full reference.
+
+## Triggering agents from Slack
+
+Agents can be triggered directly from Slack by @mentioning your bot. The output streams back to the originating thread:
+
+```
+@polos @coding_agent Build a REST API with Express and SQLite
+```
+
+When the agent suspends for approval (e.g., before running a shell command), you'll see the approval message in the same Slack thread. See [Slack Integration](/agents/slack-integration) for setup instructions.
+
 ## Structured outputs
 
 Instead of natural language, agents can return structured data:
@@ -556,8 +610,12 @@ const approvalWorkflow = defineWorkflow<{ task: string }, void, string | null>(
 - Stop conditions control execution and prevent runaway costs
 - Conversational memory maintained automatically
 - Compose agents in workflows for complex multi-step tasks
+- Sandbox tools let agents write and execute code in isolated environments
+- Trigger agents from Slack with @mentions
 
 ## Learn more
 
 - **[Agent Guide](/agents/overview)** – Advanced agent patterns and techniques
+- **[Sandbox](/agents/sandbox)** – Isolated execution environments
+- **[Slack Integration](/agents/slack-integration)** – Trigger agents from Slack
 - **[Examples](/guides/cookbook-examples)** – Real-world agent implementations

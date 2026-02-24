@@ -1,0 +1,246 @@
+---
+title: "Session Sandbox"
+description: "Reuse a sandbox across multiple agent runs with session-scoped containers"
+---
+
+A coding agent with session-scoped sandbox tools. Two separate `invoke()` calls share the same `sessionId`, so the second agent run can see files created by the first. The Docker container persists between runs and is cleaned up automatically when idle.
+
+## Create session-scoped sandbox tools
+
+The key difference from [Sandbox Tools](/guides/18-sandbox-tools) is `scope: 'session'`. This tells the SandboxManager to reuse the same Docker container across multiple invocations that share the same `sessionId`.
+
+<CodeGroup>
+
+```python Python
+from polos import (
+    Agent, max_steps, MaxStepsConfig,
+    sandbox_tools, SandboxToolsConfig, DockerEnvironmentConfig,
+)
+
+# Session-scoped sandbox tools — the container persists across agent runs
+# that share the same sessionId. Workspace files survive between invocations.
+tools = sandbox_tools(
+    SandboxToolsConfig(
+        scope="session",
+        env="docker",
+        docker=DockerEnvironmentConfig(
+            image="node:20-slim",
+        ),
+    )
+)
+```
+
+```typescript TypeScript
+import { defineAgent, maxSteps, sandboxTools } from '@polos/sdk';
+import { anthropic } from '@ai-sdk/anthropic';
+
+// Session-scoped sandbox tools — the container persists across agent runs
+// that share the same sessionId. Workspace files survive between invocations.
+export const tools = sandboxTools({
+  scope: 'session',
+  env: 'docker',
+  docker: {
+    image: 'node:20-slim',
+  },
+});
+```
+
+</CodeGroup>
+
+## Define the agent
+
+<CodeGroup>
+
+```python Python
+coding_agent = Agent(
+    id="session_coding_agent",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        "You are a coding agent with access to a persistent sandbox environment. "
+        "You can create files, edit code, run shell commands, and search the codebase. "
+        "Files from previous turns in this session are still present -- check what "
+        "already exists before creating new files. "
+        "Use the tools to complete the task, then summarize what you did and show the output. "
+        "Always verify your work by running the code after writing it."
+    ),
+    tools=tools,
+    stop_conditions=[max_steps(MaxStepsConfig(count=50))],
+)
+```
+
+```typescript TypeScript
+export const codingAgent = defineAgent({
+  id: 'session_coding_agent',
+  model: anthropic('claude-sonnet-4-5'),
+  systemPrompt:
+    'You are a coding agent with access to a persistent sandbox environment. ' +
+    'You can create files, edit code, run shell commands, and search the codebase. ' +
+    'Files from previous turns in this session are still present — check what ' +
+    'already exists before creating new files. ' +
+    'Use the tools to complete the task, then summarize what you did and show the output. ' +
+    'Always verify your work by running the code after writing it.',
+  tools,
+  stopConditions: [maxSteps({ count: 50 })],
+});
+```
+
+</CodeGroup>
+
+## Run multiple invocations with a shared session
+
+Pass the same `sessionId` to multiple `invoke()` calls. Each run streams events and waits for the agent to complete before starting the next. The second run sees files created by the first.
+
+<CodeGroup>
+
+```python Python
+import asyncio
+import uuid
+from polos import Polos
+from polos.features import events
+
+from agents import coding_agent
+
+async def stream_and_wait(polos, handle):
+    """Stream agent activity until the workflow completes."""
+    async for event in events.stream_workflow(polos, handle.root_workflow_id, handle.id):
+        if event.event_type == "text_delta":
+            content = event.data.get("content") if isinstance(event.data, dict) else None
+            if isinstance(content, str):
+                print(content, end="", flush=True)
+        elif event.event_type == "tool_call":
+            tool_call = event.data.get("tool_call", {}) if isinstance(event.data, dict) else {}
+            tool_name = tool_call.get("function", {}).get("name", "unknown")
+            print(f"\n  [Using {tool_name}...]")
+
+async def main():
+    async with Polos(log_file="polos.log") as polos:
+        # A single session ID shared across both agent runs
+        session_id = str(uuid.uuid4())
+
+        # Run 1: Create a utility module
+        handle1 = await polos.invoke(
+            coding_agent.id,
+            {"input": "Create math-utils.js with add() and multiply(). "
+             "Create test-math.js that tests them. Run with node.",
+             "streaming": True},
+            session_id=session_id,
+        )
+        await stream_and_wait(polos, handle1)
+
+        # Run 2: Build on top of what Run 1 created (same container)
+        handle2 = await polos.invoke(
+            coding_agent.id,
+            {"input": "Add subtract() to math-utils.js. "
+             "Update test-math.js to test subtract. Run tests.",
+             "streaming": True},
+            session_id=session_id,
+        )
+        await stream_and_wait(polos, handle2)
+
+asyncio.run(main())
+```
+
+```typescript TypeScript
+import { randomUUID } from 'node:crypto';
+import { Polos } from '@polos/sdk';
+import type { ExecutionHandle } from '@polos/sdk';
+
+import { codingAgent } from './agents.js';
+
+async function streamAndWait(polos: Polos, handle: ExecutionHandle): Promise<void> {
+  // Stream agent activity until the workflow completes
+  for await (const event of polos.events.streamWorkflow(handle.rootWorkflowId, handle.id)) {
+    if (event.eventType === 'text_delta') {
+      const content = (event.data as Record<string, unknown>)['content'];
+      if (typeof content === 'string') {
+        process.stdout.write(content);
+      }
+    } else if (event.eventType === 'tool_call') {
+      const toolCall = (event.data as Record<string, unknown>)['tool_call'] as Record<string, unknown> | undefined;
+      const fn = toolCall?.['function'] as Record<string, unknown> | undefined;
+      console.log(`\n  [Using ${String(fn?.['name'] ?? 'unknown')}...]`);
+    }
+  }
+}
+
+async function main() {
+  const polos = new Polos({ deploymentId: 'session-sandbox-examples', logFile: 'polos.log' });
+  await polos.start();
+
+  // A single session ID shared across both agent runs
+  const sessionId = randomUUID();
+
+  try {
+    // Run 1: Create a utility module
+    const handle1 = await polos.invoke(
+      codingAgent.id,
+      { input: 'Create math-utils.js with add() and multiply(). '
+        + 'Create test-math.js that tests them. Run with node.',
+        streaming: true },
+      { sessionId },
+    );
+    await streamAndWait(polos, handle1);
+
+    // Run 2: Build on top of what Run 1 created (same container)
+    const handle2 = await polos.invoke(
+      codingAgent.id,
+      { input: 'Add subtract() to math-utils.js. '
+        + 'Update test-math.js to test subtract. Run tests.',
+        streaming: true },
+      { sessionId },
+    );
+    await streamAndWait(polos, handle2);
+  } finally {
+    await polos.stop();
+  }
+}
+
+main().catch(console.error);
+```
+
+</CodeGroup>
+
+## How it works
+
+1. `sandboxTools({ scope: 'session' })` creates tools that look up or create a container keyed by `sessionId`
+2. The first `invoke()` creates a new Docker container and runs the agent inside it
+3. The second `invoke()` with the same `sessionId` reuses the existing container — files from Run 1 are still on disk
+4. The container is cleaned up automatically after an idle timeout
+
+## Comparison with default sandbox
+
+| Feature | Default (`scope: 'invocation'`) | Session (`scope: 'session'`) |
+|---|---|---|
+| Container lifetime | Single invocation | Shared across invocations |
+| File persistence | Destroyed after run | Survives between runs |
+| Use case | Isolated tasks | Multi-turn workflows |
+| Session ID | Not required | Required (shared key) |
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/24-session-sandbox
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
+uv sync
+python main.py
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/24-session-sandbox
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
+npm install
+npx tsx main.ts
+```
+
+</CodeGroup>
+
+<Note>Docker must be installed and running. The container image (`node:20-slim`) will be pulled automatically on first run.</Note>
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/24-session-sandbox) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/24-session-sandbox)

@@ -1,0 +1,201 @@
+---
+title: "Slack Channel Notifications"
+description: "Send Slack notifications when agents suspend for approval or user input"
+---
+
+An agent with Slack channel notifications.
+
+## Create a Slack channel helper
+
+<CodeGroup>
+
+```python Python
+import os
+from polos import Polos, SlackChannel, SlackChannelConfig
+
+slack_bot_token = os.environ["SLACK_BOT_TOKEN"]
+default_channel = os.environ.get("SLACK_CHANNEL", "#agent-notifications")
+ops_channel = os.environ.get("SLACK_OPS_CHANNEL", "#ops-approvals")
+
+# Helper to create a Slack channel targeting a specific Slack channel
+def slack(channel: str) -> SlackChannel:
+    return SlackChannel(SlackChannelConfig(
+        bot_token=slack_bot_token,
+        default_channel=channel,
+    ))
+```
+
+```typescript TypeScript
+import { Polos, SlackChannel, defineAgent, defineTool } from '@polos/sdk';
+import { z } from 'zod';
+
+const slackBotToken = process.env['SLACK_BOT_TOKEN']!;
+const defaultChannel = process.env['SLACK_CHANNEL'] ?? '#agent-notifications';
+const opsChannel = process.env['SLACK_OPS_CHANNEL'] ?? '#ops-approvals';
+
+// Helper to create a Slack channel targeting a specific Slack channel
+const slack = (channel: string) =>
+  new SlackChannel({
+    botToken: slackBotToken,
+    defaultChannel: channel,
+  });
+```
+
+</CodeGroup>
+
+## Define tools
+
+A tool with `approval: 'always'` suspends for approval before execution. Per-tool channels route approval notifications to a specific Slack channel.
+
+<CodeGroup>
+
+```python Python
+from pydantic import BaseModel, Field
+from polos import WorkflowContext, tool
+
+class SendEmailInput(BaseModel):
+    to: str = Field(description="Recipient email address")
+    subject: str = Field(description="Email subject line")
+    body: str = Field(description="Email body text")
+
+# Tool with approval: 'always' — Slack shows inline Approve/Reject buttons.
+@tool(
+    id="send_email",
+    description="Send an email to a recipient. Requires approval before sending.",
+    approval="always",
+)
+async def send_email(ctx: WorkflowContext, input: SendEmailInput) -> dict:
+    return {"sent": True, "to": input.to, "subject": input.subject}
+```
+
+```typescript TypeScript
+// Tool with approval: 'always' — Slack shows inline Approve/Reject buttons.
+// Per-tool channel: approval notifications go to #ops-approvals.
+const sendEmailTool = defineTool(
+  {
+    id: 'send_email',
+    description: 'Send an email to a recipient. Requires approval before sending.',
+    inputSchema: z.object({
+      to: z.string().describe('Recipient email address'),
+      subject: z.string().describe('Email subject line'),
+      body: z.string().describe('Email body text'),
+    }),
+    approval: 'always',
+    channels: [slack(opsChannel)],
+  },
+  async (input) => {
+    return { sent: true, to: input.to, subject: input.subject };
+  },
+);
+```
+
+</CodeGroup>
+
+## Define the agent
+
+<CodeGroup>
+
+```python Python
+from polos import Agent
+
+assistant_agent = Agent(
+    id="slack-assistant",
+    provider="anthropic",
+    model="claude-sonnet-4-5",
+    system_prompt=(
+        "You are a helpful assistant that can send emails. "
+        "When asked to send an email, use the send_email tool. "
+        "Be concise and direct."
+    ),
+    tools=[send_email],
+)
+```
+
+```typescript TypeScript
+const assistantAgent = defineAgent({
+  id: 'slack-assistant',
+  model: 'anthropic:claude-sonnet-4-5',
+  systemPrompt:
+    'You are a helpful assistant that can send emails. ' +
+    'When asked to send an email, use the send_email tool. ' +
+    'Be concise and direct.',
+  tools: [sendEmailTool],
+});
+```
+
+</CodeGroup>
+
+## Start the worker with Slack channel
+
+<CodeGroup>
+
+```python Python
+import asyncio
+
+async def main():
+    main_slack = SlackChannel(SlackChannelConfig(
+        bot_token=slack_bot_token,
+        default_channel=default_channel,
+    ))
+
+    polos = Polos(
+        deployment_id="slack-channel-example",
+        channels=[main_slack],
+    )
+
+    await polos.serve()
+
+asyncio.run(main())
+```
+
+```typescript TypeScript
+const mainSlack = new SlackChannel({
+  botToken: slackBotToken,
+  defaultChannel,
+});
+
+const polos = new Polos({
+  deploymentId: 'slack-channel-example',
+  channels: [mainSlack],
+});
+
+await polos.serve();
+```
+
+</CodeGroup>
+
+## Channel routing
+
+| Trigger | Where notifications go |
+|---|---|
+| `send_email` tool approval | `#ops-approvals` (per-tool channel) |
+
+When a user @mentions the bot in Slack, the orchestrator parses the agent ID and routes output back to the thread. Tool-level channels override the default.
+
+## Run it
+
+<CodeGroup>
+
+```bash Python
+git clone https://github.com/polos-dev/polos.git
+cd polos/python-examples/23-slack-channel
+cp .env.example .env  # Add your POLOS_PROJECT_ID and SLACK_BOT_TOKEN
+uv sync
+python main.py
+```
+
+```bash TypeScript
+git clone https://github.com/polos-dev/polos.git
+cd polos/typescript-examples/23-slack-channel
+cp .env.example .env  # Add your POLOS_PROJECT_ID and SLACK_BOT_TOKEN
+npm install
+npx tsx main.ts
+```
+
+</CodeGroup>
+
+<Note>See [Slack Integration](/agents/slack-integration) for full Slack app setup instructions (creating the app, adding scopes, enabling interactivity).</Note>
+
+Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
+
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/23-slack-channel) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/23-slack-channel)

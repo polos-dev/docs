@@ -136,13 +136,13 @@ Use `schedules.create()` to create schedules at runtime. This is useful for per-
 <CodeGroup>
 
 ```python Python
-from polos import PolosClient, schedules
+from polos import Polos, schedules
 
-client = PolosClient(project_id="your-project-id")
+polos = Polos()
 
 # Create a schedule for a specific user
 schedule_id = await schedules.create(
-    client=client,
+    polos=polos,
     workflow="reminder",
     cron="0 8 * * *",
     timezone="America/New_York",
@@ -157,7 +157,7 @@ users = [
 
 for user in users:
     await schedules.create(
-        client=client,
+        polos=polos,
         workflow="reminder",
         cron=user["cron"],
         timezone=user["tz"],
@@ -166,12 +166,12 @@ for user in users:
 ```
 
 ```typescript TypeScript
-import { PolosClient } from '@polos/sdk';
+import { Polos } from '@polos/sdk';
 
-const client = new PolosClient({ projectId: 'your-project-id' });
+const polos = new Polos();
 
 // Create a schedule for a specific user
-const scheduleId = await client.schedules.create(
+const scheduleId = await polos.schedules.create(
   'schedulable_reminder',
   '0 8 * * *',
   'America/New_York',
@@ -185,7 +185,7 @@ const users = [
 ];
 
 for (const user of users) {
-  await client.schedules.create(
+  await polos.schedules.create(
     'schedulable_reminder',
     user.cron,
     user.tz,
@@ -221,19 +221,17 @@ Examples:
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/16-scheduled-workflow
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/16-scheduled-workflow
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>

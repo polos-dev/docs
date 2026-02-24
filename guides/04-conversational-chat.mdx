@@ -55,14 +55,14 @@ conversation_id = "user-123-session"
 
 # First message
 result1 = await chat_assistant.stream(
-    client,
+    polos,
     "What's the weather in Tokyo?",
     conversation_id=conversation_id,
 )
 
 # Follow-up uses same context
 result2 = await chat_assistant.stream(
-    client,
+    polos,
     "How about London?",  # Agent remembers we're asking about weather
     conversation_id=conversation_id,
 )
@@ -75,13 +75,13 @@ import { randomUUID } from 'node:crypto';
 const conversationId = randomUUID();
 
 // First message
-const result1 = await chatAssistant.stream(client, {
+const result1 = await chatAssistant.stream(polos, {
   input: "What's the weather in Tokyo?",
   conversationId,
 });
 
 // Follow-up uses same context
-const result2 = await chatAssistant.stream(client, {
+const result2 = await chatAssistant.stream(polos, {
   input: 'How about London?', // Agent remembers we're asking about weather
   conversationId,
 });
@@ -96,19 +96,17 @@ const result2 = await chatAssistant.stream(client, {
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/04-conversational-chat
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 uv sync
-python worker.py      # Terminal 1
-python chat.py        # Terminal 2 (interactive)
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/04-conversational-chat
-cp .env.example .env
+cp .env.example .env  # Add your POLOS_PROJECT_ID and API key
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx chat.ts        # Terminal 2 (interactive)
+npx tsx main.ts
 ```
 
 </CodeGroup>

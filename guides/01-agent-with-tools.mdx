@@ -97,23 +97,21 @@ export const weatherAgent = defineAgent({
 ```bash Python
 git clone https://github.com/polos-dev/polos.git
 cd polos/python-examples/01-weather-agent
-cp .env.example .env  # Add POLOS_PROJECT_ID and OPENAI_API_KEY
+cp .env.example .env  # Add your POLOS_PROJECT_ID and OPENAI_API_KEY
 uv sync
-python worker.py      # Terminal 1
-python main.py        # Terminal 2
+python main.py
 ```
 
 ```bash TypeScript
 git clone https://github.com/polos-dev/polos.git
 cd polos/typescript-examples/01-agent-with-tools
-cp .env.example .env  # Add POLOS_PROJECT_ID and OPENAI_API_KEY
+cp .env.example .env  # Add your POLOS_PROJECT_ID and OPENAI_API_KEY
 npm install
-npx tsx worker.ts      # Terminal 1
-npx tsx main.ts        # Terminal 2
+npx tsx main.ts
 ```
 
 </CodeGroup>
 
 Open [http://localhost:5173](http://localhost:5173) to view your agents and workflows, run them from the UI, and see execution traces.
 
-[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-weather-agent) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/01-agent-with-tools)
+[Python example on GitHub](https://github.com/polos-dev/polos/tree/main/python-examples/01-agent-with-tools) | [TypeScript example on GitHub](https://github.com/polos-dev/polos/tree/main/typescript-examples/01-agent-with-tools)
